@@ -1,0 +1,57 @@
+version: '3.8'
+
+services:
+  # FastAPI service
+  api:
+    build:
+      context: .
+      dockerfile: docker/Dockerfile.api
+    container_name: heart-disease-api
+    ports:
+      - "8000:8000"
+    environment:
+      - PYTHONUNBUFFERED=1
+      - LOG_LEVEL=INFO
+    volumes:
+      - ./models:/app/models
+      - ./data:/app/data
+      - ./logs:/app/logs
+      - ./configs:/app/configs
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+    networks:
+      - heart-disease-network
+
+  # Streamlit web app
+  web:
+    build:
+      context: .
+      dockerfile: docker/Dockerfile.web
+    container_name: heart-disease-web
+    ports:
+      - "8501:8501"
+    environment:
+      - PYTHONUNBUFFERED=1
+    volumes:
+      - ./models:/app/models
+      - ./data:/app/data
+      - ./configs:/app/configs
+    restart: unless-stopped
+    depends_on:
+      - api
+    networks:
+      - heart-disease-network
+
+networks:
+  heart-disease-network:
+    driver: bridge
+
+volumes:
+  models:
+  data:
+  logs:
