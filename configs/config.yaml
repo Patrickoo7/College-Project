@@ -67,6 +67,13 @@ training:
   n_jobs: -1
   verbose: 1
 
+gpu:
+  enabled: true  # Auto-detect and use GPU if available
+  prefer_gpu: true  # Prefer GPU over CPU when available
+  device_id: 0  # GPU device ID to use (for multi-GPU systems)
+  memory_limit_mb: null  # Memory limit in MB (null = use all available)
+  fallback_to_cpu: true  # Fallback to CPU if GPU fails
+
 evaluation:
   metrics:
     - accuracy

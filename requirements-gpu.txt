@@ -1,0 +1,46 @@
+# GPU-accelerated versions of ML libraries
+# Install these if you have a CUDA-compatible GPU
+
+# XGBoost with GPU support
+# Note: Requires CUDA Toolkit 11.x or 12.x
+# Installation: pip install xgboost[gpu]
+
+# LightGBM with GPU support
+# Note: Requires CUDA Toolkit and OpenCL
+# Installation: pip install lightgbm --install-option=--gpu
+
+# CatBoost with GPU support (already includes GPU support in standard package)
+catboost>=1.2
+
+# PyTorch with CUDA support (for future neural network models)
+# For CUDA 11.8:
+# torch>=2.0.0+cu118 torchvision>=0.15.0+cu118 torchaudio>=2.0.0+cu118 --index-url https://download.pytorch.org/whl/cu118
+
+# For CUDA 12.1:
+# torch>=2.0.0+cu121 torchvision>=0.15.0+cu121 torchaudio>=2.0.0+cu121 --index-url https://download.pytorch.org/whl/cu121
+
+# TensorFlow with GPU support (for future neural network models)
+# tensorflow>=2.13.0  # Automatically includes GPU support if CUDA is available
+
+# RAPIDS cuML for GPU-accelerated scikit-learn (optional, Linux only)
+# Note: Requires CUDA 11.x and specific Python/CUDA versions
+# cuml-cu11>=23.0.0  # For CUDA 11.x
+# cudf-cu11>=23.0.0  # cuDF for GPU DataFrames
+
+# GPU monitoring and utilities
+# gpustat>=1.1  # Monitor GPU usage
+# nvidia-ml-py3>=7.352.0  # NVIDIA Management Library Python bindings
+
+# Instructions:
+# 1. Install CUDA Toolkit from NVIDIA: https://developer.nvidia.com/cuda-downloads
+# 2. Install cuDNN: https://developer.nvidia.com/cudnn
+# 3. Install base requirements: pip install -r requirements.txt
+# 4. Install GPU requirements based on your CUDA version
+#
+# Example for CUDA 11.8:
+#   pip install torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cu118
+#   pip install xgboost lightgbm catboost
+#
+# Verify GPU is detected:
+#   python -c "import torch; print(torch.cuda.is_available())"
+#   python -c "from src.utils.gpu_utils import get_gpu_manager; get_gpu_manager().print_gpu_summary()"

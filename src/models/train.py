@@ -36,8 +36,10 @@ except ImportError:
 from ..utils.config import get_config
 from ..utils.exceptions import ModelTrainingError
 from ..utils.logger import get_logger
+from ..utils.gpu_utils import get_gpu_manager
 
 logger = get_logger(__name__)
+gpu_manager = get_gpu_manager()
 
 
 class ModelTrainer:
@@ -50,6 +52,13 @@ class ModelTrainer:
         self.trained_models = {}
         self.best_model = None
         self.best_score = 0.0
+
+        # Detect GPU and configure
+        gpu_enabled = self.config.get("gpu.enabled", True)
+        if gpu_enabled:
+            gpu_manager.print_gpu_summary()
+        else:
+            logger.info("GPU support disabled in configuration")
 
         # Setup MLflow
         self._setup_mlflow()
@@ -116,16 +125,28 @@ class ModelTrainer:
             elif model_name == "xgboost":
                 if not XGBOOST_AVAILABLE:
                     raise ModelTrainingError("XGBoost not installed")
+                # Configure GPU if available
+                gpu_enabled = self.config.get("gpu.enabled", True)
+                if gpu_enabled:
+                    params = gpu_manager.configure_xgboost(params)
                 return xgb.XGBClassifier(**params)
 
             elif model_name == "lightgbm":
                 if not LIGHTGBM_AVAILABLE:
                     raise ModelTrainingError("LightGBM not installed")
+                # Configure GPU if available
+                gpu_enabled = self.config.get("gpu.enabled", True)
+                if gpu_enabled:
+                    params = gpu_manager.configure_lightgbm(params)
                 return lgb.LGBMClassifier(**params)
 
             elif model_name == "catboost":
                 if not CATBOOST_AVAILABLE:
                     raise ModelTrainingError("CatBoost not installed")
+                # Configure GPU if available
+                gpu_enabled = self.config.get("gpu.enabled", True)
+                if gpu_enabled:
+                    params = gpu_manager.configure_catboost(params)
                 return cb.CatBoostClassifier(**params)
 
             else:

@@ -29,6 +29,7 @@ A production-ready, end-to-end machine learning system for predicting heart dise
 - **Multiple Datasets**: Supports 4 UCI heart disease datasets (Cleveland, Hungarian, Switzerland, VA)
 - **8+ ML Algorithms**: Logistic Regression, Random Forest, XGBoost, LightGBM, CatBoost, SVM, KNN, Decision Trees
 - **Ensemble Methods**: Voting and Stacking classifiers for improved performance
+- **GPU Acceleration**: Automatic GPU detection and usage for XGBoost, LightGBM, CatBoost (5-15x speedup)
 - **Feature Engineering**: Automated feature creation, interaction features, domain-specific features
 - **Hyperparameter Optimization**: Integrated Optuna for automated tuning
 
@@ -129,6 +130,28 @@ pip install -e ".[dev]"
 # Complete development setup
 make dev-setup
 ```
+
+### Option 4: GPU Acceleration (Optional but Recommended)
+
+For 5-15x faster training with XGBoost, LightGBM, and CatBoost:
+
+```bash
+# Install base requirements first
+pip install -r requirements.txt
+
+# Install GPU-accelerated packages (requires CUDA Toolkit)
+pip install xgboost lightgbm catboost
+
+# For PyTorch with CUDA 11.8
+pip install torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cu118
+
+# Verify GPU detection
+python -c "from src.utils.gpu_utils import get_gpu_manager; get_gpu_manager().print_gpu_summary()"
+```
+
+**Note:** GPU support requires NVIDIA GPU with CUDA Toolkit installed. See [GPU Setup Guide](docs/GPU_SETUP.md) for detailed instructions.
+
+The system automatically detects and uses GPU when available, with seamless fallback to CPU.
 
 ## Quick Start
 
