@@ -2,7 +2,7 @@
 
 import sys
 from pathlib import Path
-from typing import Dict, List, Optional, Any
+from typing import Dict, List, Optional, Any, Tuple
 import pandas as pd
 import numpy as np
 from datetime import datetime, timedelta
@@ -61,7 +61,7 @@ class AutomatedRetrainingPipeline:
             "retraining.interval_days", 30
         )
 
-    def should_retrain(self, current_performance: Dict[str, float]) -> tuple[bool, str]:
+    def should_retrain(self, current_performance: Dict[str, float]) -> Tuple[bool, str]:
         """
         Determine if model should be retrained.
 
@@ -211,7 +211,9 @@ class AutomatedRetrainingPipeline:
         """Load latest data for retraining."""
         # Load all datasets
         datasets = self.data_loader.load_all_datasets()
-        df = self.data_loader.combine_datasets(datasets)
+        # combine_datasets expects List[str], not Dict
+        dataset_names = list(datasets.keys())
+        df = self.data_loader.combine_datasets(dataset_names)
         return df
 
     def _evaluate_current_model(self, df: pd.DataFrame) -> Dict[str, float]:
@@ -324,6 +326,10 @@ class AutomatedRetrainingPipeline:
 
     def _save_baseline_performance(self, models: Dict[str, Dict]):
         """Save baseline performance metrics."""
+        if not models:
+            logger.warning("No models to save baseline performance for")
+            return
+
         # Find best model
         best_model = max(
             models.items(),

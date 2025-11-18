@@ -258,15 +258,23 @@ class PredictionStore:
         Returns:
             DataFrame of predictions
         """
+        # Input validation
+        if limit <= 0 or limit > 10000:
+            raise ValueError("Limit must be between 1 and 10000")
+
         with sqlite3.connect(self.db_path) as conn:
             query = "SELECT * FROM predictions"
+            params = []
 
             if model_name:
-                query += f" WHERE model_name = '{model_name}'"
+                # Use parameterized query to prevent SQL injection
+                query += " WHERE model_name = ?"
+                params.append(model_name)
 
-            query += f" ORDER BY timestamp DESC LIMIT {limit}"
+            query += " ORDER BY timestamp DESC LIMIT ?"
+            params.append(limit)
 
-            df = pd.read_sql_query(query, conn)
+            df = pd.read_sql_query(query, conn, params=params)
 
         return df
 
@@ -478,7 +486,13 @@ class PredictionStore:
             start_date: Start date filter
             end_date: End date filter
         """
+        # Whitelist allowed table names to prevent SQL injection
+        ALLOWED_TABLES = {'predictions', 'model_performance', 'drift_events'}
+        if table not in ALLOWED_TABLES:
+            raise ValueError(f"Invalid table name: {table}. Allowed tables: {ALLOWED_TABLES}")
+
         with sqlite3.connect(self.db_path) as conn:
+            # Safe to use f-string since table is whitelisted
             query = f"SELECT * FROM {table}"
             params = []
 
@@ -493,7 +507,10 @@ class PredictionStore:
                 query += " AND timestamp <= ?"
                 params.append(end_date.isoformat())
 
-            df = pd.read_sql_query(query, conn, params=params)
+            if params:
+                df = pd.read_sql_query(query, conn, params=params)
+            else:
+                df = pd.read_sql_query(query, conn)
 
         df.to_csv(output_path, index=False)
         logger.info(f"Exported {len(df)} rows to {output_path}")

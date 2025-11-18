@@ -48,7 +48,7 @@ class DriftDetector:
         current_data: pd.DataFrame,
         categorical_features: Optional[List[str]] = None,
         numerical_features: Optional[List[str]] = None
-    ) -> Dict[str, any]:
+    ) -> Dict[str, Any]:
         """
         Detect drift between reference and current data.
 
@@ -112,9 +112,14 @@ class DriftDetector:
 
         # Determine overall drift
         results["overall_drift"] = len(results["drifted_features"]) > 0
-        results["drift_score"] = len(results["drifted_features"]) / (
-            len(numerical_features) + len(categorical_features)
-        )
+
+        # Calculate drift score with division by zero protection
+        total_features = len(numerical_features) + len(categorical_features)
+        if total_features == 0:
+            results["drift_score"] = 0.0
+            logger.warning("No features available for drift detection")
+        else:
+            results["drift_score"] = len(results["drifted_features"]) / total_features
 
         # Save drift report
         self._save_drift_report(results)
@@ -132,7 +137,7 @@ class DriftDetector:
         reference: pd.Series,
         current: pd.Series,
         feature_name: str
-    ) -> Dict[str, any]:
+    ) -> Dict[str, Any]:
         """
         Detect drift in numerical feature using multiple methods.
 
@@ -205,7 +210,7 @@ class DriftDetector:
         reference: pd.Series,
         current: pd.Series,
         feature_name: str
-    ) -> Dict[str, any]:
+    ) -> Dict[str, Any]:
         """
         Detect drift in categorical feature.
 
@@ -245,13 +250,20 @@ class DriftDetector:
                 cur_counts * cur_total
             ], axis=1).fillna(0)
 
-            chi2_statistic, chi2_pvalue = stats.chi2_contingency(observed.T)[:2]
+            # Check if we have enough categories for chi-square test
+            if observed.shape[0] < 2:
+                logger.warning(f"Insufficient categories for chi-square test on {feature_name}")
+                result["methods"]["chi_square"] = {
+                    "error": "Insufficient categories (need at least 2)"
+                }
+            else:
+                chi2_statistic, chi2_pvalue = stats.chi2_contingency(observed.T)[:2]
 
-            result["methods"]["chi_square"] = {
-                "statistic": float(chi2_statistic),
-                "p_value": float(chi2_pvalue),
-                "drift": chi2_pvalue < self.significance_level
-            }
+                result["methods"]["chi_square"] = {
+                    "statistic": float(chi2_statistic),
+                    "p_value": float(chi2_pvalue),
+                    "drift": chi2_pvalue < self.significance_level
+                }
         except Exception as e:
             logger.warning(f"Chi-square test failed for {feature_name}: {e}")
             result["methods"]["chi_square"] = {"error": str(e)}

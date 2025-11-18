@@ -1,6 +1,7 @@
 """API routes for heart disease prediction."""
 
 import io
+import re
 from pathlib import Path
 from typing import List, Optional
 
@@ -86,12 +87,16 @@ async def predict(
         # Make prediction
         result = predictor.predict_single(**patient_data)
 
+        # Safely extract probability and confidence
+        probability = result.get("probability") or {}
+        confidence = probability.get("disease") if isinstance(probability, dict) else None
+
         # Format response
         response = PredictionResponse(
             prediction=result["prediction"],
             prediction_label=result["prediction_label"],
             probability=result.get("probability"),
-            confidence=result.get("probability", {}).get("disease") if result.get("probability") else None,
+            confidence=confidence,
             model_used=model_name or default_model_name,
             input_data=patient_data
         )
@@ -133,12 +138,16 @@ async def predict_batch(request: BatchPredictionRequest):
             # Make prediction
             result = predictor.predict_single(**patient_data)
 
+            # Safely extract probability and confidence
+            probability = result.get("probability") or {}
+            confidence = probability.get("disease") if isinstance(probability, dict) else None
+
             # Create response
             pred_response = PredictionResponse(
                 prediction=result["prediction"],
                 prediction_label=result["prediction_label"],
                 probability=result.get("probability"),
-                confidence=result.get("probability", {}).get("disease") if result.get("probability") else None,
+                confidence=confidence,
                 model_used=default_model_name,
                 input_data=patient_data
             )
@@ -185,9 +194,32 @@ async def predict_from_file(file: UploadFile = File(...)):
         )
 
     try:
-        # Read CSV file
+        # Validate file type
+        if not file.filename:
+            raise HTTPException(status_code=400, detail="No filename provided")
+
+        if not file.filename.lower().endswith('.csv'):
+            raise HTTPException(
+                status_code=400,
+                detail="Only CSV files are allowed"
+            )
+
+        # Read file contents with size limit
+        MAX_FILE_SIZE = 10 * 1024 * 1024  # 10 MB
         contents = await file.read()
-        df = pd.read_csv(io.BytesIO(contents))
+
+        if len(contents) > MAX_FILE_SIZE:
+            raise HTTPException(
+                status_code=413,
+                detail=f"File too large. Maximum size is {MAX_FILE_SIZE / 1024 / 1024} MB"
+            )
+
+        # Read CSV with row limit
+        MAX_ROWS = 10000
+        df = pd.read_csv(io.BytesIO(contents), nrows=MAX_ROWS)
+
+        if len(df) == 0:
+            raise HTTPException(status_code=400, detail="CSV file is empty")
 
         logger.info(f"Processing uploaded file with {len(df)} records")
 
@@ -270,6 +302,13 @@ async def get_model_info(model_name: str):
     Returns:
         Model information
     """
+    # Validate model name to prevent path traversal
+    if not re.match(r'^[a-zA-Z0-9_-]+$', model_name):
+        raise HTTPException(
+            status_code=400,
+            detail="Invalid model name. Only alphanumeric characters, underscores, and hyphens are allowed."
+        )
+
     try:
         models_path = config.get_path("paths.models.artifacts")
         model_file = models_path / f"{model_name}.pkl"
@@ -312,6 +351,13 @@ async def use_model(model_name: str):
     Returns:
         Success message
     """
+    # Validate model name to prevent path traversal
+    if not re.match(r'^[a-zA-Z0-9_-]+$', model_name):
+        raise HTTPException(
+            status_code=400,
+            detail="Invalid model name. Only alphanumeric characters, underscores, and hyphens are allowed."
+        )
+
     global predictor, default_model_name
 
     try:

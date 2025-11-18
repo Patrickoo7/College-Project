@@ -95,3 +95,16 @@ logging:
   file: "logs/app.log"
   max_bytes: 10485760  # 10MB
   backup_count: 5
+
+# Automated retraining configuration
+retraining:
+  performance_threshold: 0.05  # 5% accuracy drop triggers retraining
+  min_samples_required: 100  # Minimum samples needed for retraining
+  interval_days: 30  # Retrain if model is older than this many days
+
+# Monitoring and alerting configuration
+monitoring:
+  accuracy_drop_threshold: 0.05  # Alert if accuracy drops by 5%
+  drift_score_threshold: 0.3  # Alert if drift score > 0.3
+  error_rate_threshold: 0.2  # Alert if error rate > 20%
+  prediction_latency_ms: 1000  # Alert if latency > 1 second
