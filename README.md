@@ -13,6 +13,9 @@ A production-ready, end-to-end machine learning system for predicting heart dise
 - [Installation](#installation)
 - [Quick Start](#quick-start)
 - [Usage](#usage)
+- [API & Web Interface](#api--web-interface)
+- [Docker Deployment](#docker-deployment)
+- [Azure Deployment](#azure-deployment)
 - [Configuration](#configuration)
 - [Model Training](#model-training)
 - [Evaluation](#evaluation)
@@ -48,11 +51,33 @@ A production-ready, end-to-end machine learning system for predicting heart dise
 - **Cross-Validation**: K-fold cross-validation with stratification
 - **Model Comparison**: Automated comparison of all models
 
+### API & Web Interface
+- **FastAPI REST API**: Production-ready API with auto-documentation (Swagger UI, ReDoc)
+- **Streamlit Web App**: Interactive web interface for predictions and visualizations
+- **Multiple Endpoints**: Single prediction, batch prediction, file upload, model switching
+- **Input Validation**: Pydantic models for request/response validation
+- **Real-time Predictions**: Instant predictions with probability scores
+- **Model Management**: List, switch, and get info on available models
+
+### Deployment & DevOps
+- **Docker Containers**: Multi-stage builds for API and web applications
+- **Docker Compose**: Orchestrated services with networking
+- **Azure Deployment**: Automated deployment to Azure App Service
+- **CI/CD Pipeline**: GitHub Actions for automated testing and deployment
+- **Infrastructure as Code**: Bash scripts for Azure resource provisioning
+- **Health Monitoring**: Health check endpoints and application insights ready
+
 ## Project Structure
 
 ```
 heart-disease-prediction/
 ├── src/
+│   ├── api/
+│   │   ├── app.py                   # FastAPI application
+│   │   ├── routes.py                # API endpoints
+│   │   └── schemas.py               # Pydantic models
+│   ├── web/
+│   │   └── streamlit_app.py        # Streamlit web interface
 │   ├── data/
 │   │   ├── data_loader.py          # Load data from multiple sources
 │   │   ├── data_validator.py       # Validate data quality
@@ -67,6 +92,7 @@ heart-disease-prediction/
 │   └── utils/
 │       ├── config.py              # Configuration management
 │       ├── logger.py              # Logging setup
+│       ├── gpu_utils.py           # GPU detection and management
 │       └── exceptions.py          # Custom exceptions
 ├── configs/
 │   ├── config.yaml               # Main configuration
@@ -79,13 +105,31 @@ heart-disease-prediction/
 │   ├── artifacts/                # Saved models
 │   ├── scaler/                   # Saved scalers
 │   └── metadata/                 # Model metadata
+├── docker/
+│   ├── Dockerfile.api           # API container
+│   └── Dockerfile.web           # Web container
+├── azure/
+│   ├── deploy-to-azure.sh       # Azure deployment script
+│   └── README.md                # Azure deployment guide
+├── .github/
+│   ├── workflows/
+│   │   └── azure-deploy.yml    # CI/CD pipeline
+│   └── CICD_SETUP.md           # CI/CD setup guide
 ├── notebooks/                    # Jupyter notebooks
 ├── tests/                        # Test suite
+│   ├── test_api.py              # API endpoint tests
+│   └── ...                      # Other tests
 ├── docs/                         # Documentation
+│   ├── API_DOCUMENTATION.md     # Complete API reference
+│   ├── API_QUICKSTART.md        # API quick start guide
+│   ├── GPU_SETUP.md             # GPU setup guide
 │   ├── old_notebooks/           # Original project notebooks
 │   ├── reports/                 # Project reports
 │   └── presentations/           # Presentations
+├── docker-compose.yml           # Docker orchestration
+├── pytest.ini                   # Pytest configuration
 ├── requirements.txt             # Python dependencies
+├── requirements-gpu.txt         # GPU dependencies
 ├── setup.py                     # Package setup
 ├── Makefile                     # Automation commands
 └── README.md                    # This file
@@ -319,6 +363,218 @@ evaluator.plot_roc_curve(y_test, y_prob, "RandomForest")
 # Save evaluation report
 evaluator.save_evaluation_report()
 ```
+
+## API & Web Interface
+
+### FastAPI REST API
+
+The system includes a production-ready REST API built with FastAPI.
+
+#### Starting the API
+
+```bash
+# Using Uvicorn
+uvicorn src.api.app:app --host 0.0.0.0 --port 8000 --reload
+
+# Using Docker
+docker-compose up api
+```
+
+#### API Endpoints
+
+- `GET /health` - Health check with GPU info
+- `POST /api/v1/predict` - Single patient prediction
+- `POST /api/v1/predict/batch` - Batch predictions
+- `POST /api/v1/predict/upload` - CSV file upload
+- `GET /api/v1/models` - List available models
+- `POST /api/v1/models/{name}/use` - Switch active model
+
+#### Interactive Documentation
+
+Once running, access:
+- **Swagger UI**: http://localhost:8000/docs
+- **ReDoc**: http://localhost:8000/redoc
+- **OpenAPI Schema**: http://localhost:8000/openapi.json
+
+#### API Usage Example
+
+```python
+import requests
+
+# Make a prediction
+url = "http://localhost:8000/api/v1/predict"
+data = {
+    "age": 63,
+    "sex": 1,
+    "cp": 3,
+    "trestbps": 145,
+    "chol": 233,
+    "restecg": 0,
+    "thalach": 150,
+    "exang": 0,
+    "oldpeak": 2.3
+}
+
+response = requests.post(url, json=data)
+result = response.json()
+
+print(f"Prediction: {result['prediction_label']}")
+print(f"Confidence: {result['confidence']:.2%}")
+```
+
+**For complete API documentation, see [API_DOCUMENTATION.md](docs/API_DOCUMENTATION.md)**
+
+### Streamlit Web Application
+
+Interactive web interface for predictions and visualizations.
+
+#### Starting the Web App
+
+```bash
+# Using Streamlit
+streamlit run src/web/streamlit_app.py
+
+# Using Docker
+docker-compose up web
+```
+
+#### Features
+
+- **Single Prediction**: Interactive form with real-time predictions
+- **Batch Prediction**: CSV file upload for bulk predictions
+- **Model Information**: View model details and feature importance
+- **Visualizations**: Gauge charts, bar charts, confusion matrices
+- **Model Switching**: Change active model on-the-fly
+
+#### Access
+
+Open browser to: http://localhost:8501
+
+## Docker Deployment
+
+### Prerequisites
+
+- Docker Engine 20.10+
+- Docker Compose 2.0+
+
+### Quick Start
+
+```bash
+# Build and start all services
+docker-compose up --build
+
+# Start in background
+docker-compose up -d
+
+# View logs
+docker-compose logs -f
+
+# Stop services
+docker-compose down
+```
+
+### Services
+
+| Service | Port | Description |
+|---------|------|-------------|
+| API | 8000 | FastAPI REST API |
+| Web | 8501 | Streamlit web interface |
+
+### Custom Build
+
+```bash
+# Build API image
+docker build -t heart-disease-api -f docker/Dockerfile.api .
+
+# Build Web image
+docker build -t heart-disease-web -f docker/Dockerfile.web .
+
+# Run API container
+docker run -p 8000:8000 \
+  -v $(pwd)/models:/app/models \
+  -v $(pwd)/configs:/app/configs \
+  heart-disease-api
+
+# Run Web container
+docker run -p 8501:8501 \
+  -v $(pwd)/models:/app/models \
+  -v $(pwd)/configs:/app/configs \
+  heart-disease-web
+```
+
+### Environment Variables
+
+Configure via `docker-compose.yml` or command line:
+
+```yaml
+environment:
+  - PYTHONUNBUFFERED=1
+  - LOG_LEVEL=INFO
+  - GPU_ENABLED=false
+```
+
+## Azure Deployment
+
+### Prerequisites
+
+- Azure account with active subscription
+- Azure CLI installed
+- Docker installed
+
+### Quick Deployment
+
+```bash
+# Run automated deployment script
+chmod +x azure/deploy-to-azure.sh
+./azure/deploy-to-azure.sh
+```
+
+The script will:
+1. Create Azure Resource Group
+2. Set up Azure Container Registry (ACR)
+3. Build and push Docker images
+4. Create App Service Plan
+5. Deploy API and Web applications
+6. Configure environment variables
+
+**Deployment time:** ~10-15 minutes
+
+### Manual Deployment
+
+See the comprehensive guide: [azure/README.md](azure/README.md)
+
+### Access Deployed Applications
+
+After deployment:
+
+```bash
+# Get URLs
+az webapp show --name heart-disease-api --resource-group heart-disease-rg --query "defaultHostName" -o tsv
+az webapp show --name heart-disease-web --resource-group heart-disease-rg --query "defaultHostName" -o tsv
+```
+
+**URLs:**
+- API: `https://heart-disease-api.azurewebsites.net`
+- API Docs: `https://heart-disease-api.azurewebsites.net/docs`
+- Web App: `https://heart-disease-web.azurewebsites.net`
+
+### CI/CD Pipeline
+
+Automated deployment with GitHub Actions:
+
+1. **Setup Azure credentials** (one-time):
+   ```bash
+   az ad sp create-for-rbac --name "github-actions-heart-disease" \
+     --role contributor \
+     --scopes /subscriptions/$SUBSCRIPTION_ID/resourceGroups/heart-disease-rg \
+     --sdk-auth
+   ```
+
+2. **Add GitHub secret**: `AZURE_CREDENTIALS` with the output from step 1
+
+3. **Push to main branch** - automatic deployment starts
+
+**For detailed CI/CD setup, see [.github/CICD_SETUP.md](.github/CICD_SETUP.md)**
 
 ## Configuration
 
