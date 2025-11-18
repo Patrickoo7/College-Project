@@ -39,6 +39,13 @@ A production-ready, end-to-end machine learning system for predicting heart dise
 ### MLOps & Production Features
 - **Experiment Tracking**: MLflow integration for tracking all experiments
 - **Model Registry**: Versioned model storage with metadata
+- **Automated Retraining**: Intelligent retraining based on performance degradation or schedule
+- **Data Drift Detection**: Multiple statistical methods (KS test, Chi-square, PSI)
+- **Hyperparameter Tuning**: Bayesian optimization with Optuna for automated tuning
+- **Prediction Store**: SQLite database for tracking all predictions and performance
+- **Feature Store**: Centralized feature management with versioning
+- **Data Versioning**: DVC integration for dataset version control
+- **Performance Monitoring**: Real-time monitoring with automated alerts
 - **Data Validation**: Comprehensive data quality checks
 - **Automated Pipeline**: End-to-end training and evaluation pipeline
 - **Configuration Management**: YAML-based configuration for easy customization
@@ -59,6 +66,14 @@ A production-ready, end-to-end machine learning system for predicting heart dise
 - **Real-time Predictions**: Instant predictions with probability scores
 - **Model Management**: List, switch, and get info on available models
 
+### Model Explainability & Reporting
+- **SHAP Integration**: Global and local feature importance with SHapley values
+- **LIME Support**: Local interpretable model-agnostic explanations
+- **Feature Contributions**: Individual prediction explanations
+- **Automated Reports**: HTML reports for model evaluation and drift detection
+- **Model Cards**: Comprehensive model documentation following best practices
+- **Visualization**: Waterfall plots, beeswarm plots, feature importance charts
+
 ### Deployment & DevOps
 - **Docker Containers**: Multi-stage builds for API and web applications
 - **Docker Compose**: Orchestrated services with networking
@@ -66,6 +81,7 @@ A production-ready, end-to-end machine learning system for predicting heart dise
 - **CI/CD Pipeline**: GitHub Actions for automated testing and deployment
 - **Infrastructure as Code**: Bash scripts for Azure resource provisioning
 - **Health Monitoring**: Health check endpoints and application insights ready
+- **Alert System**: Multi-channel alerts (email, Slack) for model performance
 
 ## Project Structure
 
@@ -89,6 +105,18 @@ heart-disease-prediction/
 │   │   ├── train.py               # Training pipeline with MLflow
 │   │   ├── evaluate.py            # Comprehensive evaluation
 │   │   └── predict.py             # Prediction interface
+│   ├── mlops/
+│   │   ├── retraining.py          # Automated retraining pipeline
+│   │   ├── drift_detection.py     # Data drift detection
+│   │   ├── hyperparameter_tuning.py # Bayesian optimization
+│   │   ├── prediction_store.py    # Prediction database
+│   │   ├── feature_store.py       # Feature management
+│   │   └── monitoring.py          # Performance monitoring & alerts
+│   ├── reporting/
+│   │   ├── report_generator.py    # Automated HTML reports
+│   │   └── model_card.py          # Model documentation
+│   ├── explainability/
+│   │   └── explainer.py           # SHAP & LIME explanations
 │   └── utils/
 │       ├── config.py              # Configuration management
 │       ├── logger.py              # Logging setup
@@ -123,6 +151,8 @@ heart-disease-prediction/
 │   ├── API_DOCUMENTATION.md     # Complete API reference
 │   ├── API_QUICKSTART.md        # API quick start guide
 │   ├── GPU_SETUP.md             # GPU setup guide
+│   ├── PHASES_6_9_DOCUMENTATION.md # MLOps & Advanced Features guide
+│   ├── model_cards/             # Generated model cards
 │   ├── old_notebooks/           # Original project notebooks
 │   ├── reports/                 # Project reports
 │   └── presentations/           # Presentations
