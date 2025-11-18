@@ -1,0 +1,90 @@
+# Main Configuration File for Heart Disease Prediction System
+
+project:
+  name: "heart-disease-prediction"
+  version: "1.0.0"
+  description: "End-to-end ML system for predicting heart disease"
+  author: "College Project - Group 1"
+
+paths:
+  data:
+    raw: "data/raw"
+    processed: "data/processed"
+    external: "data/external"
+  models:
+    artifacts: "models/artifacts"
+    scaler: "models/scaler"
+    metadata: "models/metadata"
+  logs: "logs"
+  mlflow: "mlruns"
+
+datasets:
+  cleveland: "cleveland.csv"
+  hungarian: "hungarian.csv"
+  switzerland: "switzerland.csv"
+  va: "va.csv"
+  heart: "heart.csv"
+  framingham: "framingham.csv"
+  combined: "heart_statlog_cleveland_hungary_final.csv"
+
+features:
+  target: "target"
+  categorical:
+    - sex
+    - cp
+    - fbs
+    - restecg
+    - exang
+    - slope
+    - ca
+    - thal
+  continuous:
+    - age
+    - trestbps
+    - chol
+    - thalach
+    - oldpeak
+
+  # Features to drop (high missing values or low importance)
+  drop_features:
+    - slope
+    - ca
+    - thal
+    - fbs
+
+preprocessing:
+  test_size: 0.25
+  random_state: 42
+  stratify: true
+  scaling_method: "standard"  # standard, minmax, robust
+  handle_missing: "drop"  # drop, mean, median, mode, knn
+  handle_outliers: false
+  outlier_method: "iqr"  # iqr, zscore, isolation_forest
+
+training:
+  cv_folds: 5
+  cv_strategy: "stratified"  # stratified, kfold, timeseries
+  n_jobs: -1
+  verbose: 1
+
+evaluation:
+  metrics:
+    - accuracy
+    - precision
+    - recall
+    - f1
+    - roc_auc
+    - pr_auc
+  threshold: 0.5
+
+mlflow:
+  experiment_name: "heart-disease-prediction"
+  tracking_uri: "mlruns"
+  artifact_location: "models/artifacts"
+
+logging:
+  level: "INFO"  # DEBUG, INFO, WARNING, ERROR, CRITICAL
+  format: "%(asctime)s - %(name)s - %(levelname)s - %(message)s"
+  file: "logs/app.log"
+  max_bytes: 10485760  # 10MB
+  backup_count: 5
