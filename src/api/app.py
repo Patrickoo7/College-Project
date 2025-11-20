@@ -11,33 +11,34 @@ import uvicorn
 
 from .routes import router
 from .schemas import PredictionResponse, HealthResponse
-from ..utils.config import get_config
+from ..config import get_config
 from ..utils.logger import get_logger
 from ..utils.gpu_utils import get_gpu_manager
 
 logger = get_logger(__name__)
 config = get_config()
 
-# Create FastAPI app
+# Create FastAPI app with config-driven settings
 app = FastAPI(
-    title="Heart Disease Prediction API",
-    description="REST API for predicting heart disease using machine learning models",
-    version="1.0.0",
+    title=config.api.title,
+    description=config.api.description,
+    version=config.api.version,
     docs_url="/docs",
     redoc_url="/redoc",
+    debug=config.debug,
 )
 
-# Configure CORS
+# Configure CORS from config
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],  # Configure appropriately for production
-    allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
+    allow_origins=config.api.cors.allowed_origins,
+    allow_credentials=config.api.cors.allow_credentials,
+    allow_methods=config.api.cors.allow_methods,
+    allow_headers=config.api.cors.allow_headers,
 )
 
-# Include routers
-app.include_router(router, prefix="/api/v1")
+# Include routers with config-driven prefix
+app.include_router(router, prefix=config.api.prefix)
 
 
 @app.on_event("startup")
@@ -66,16 +67,18 @@ async def shutdown_event():
 @app.get("/", response_model=Dict)
 async def root():
     """Root endpoint with API information."""
+    prefix = config.api.prefix
     return {
-        "name": "Heart Disease Prediction API",
-        "version": "1.0.0",
+        "name": config.api.title,
+        "version": config.api.version,
+        "environment": config.environment,
         "status": "running",
         "docs": "/docs",
-        "health": "/api/v1/health",
+        "health": f"{prefix}/health",
         "endpoints": {
-            "predict": "/api/v1/predict",
-            "predict_batch": "/api/v1/predict/batch",
-            "models": "/api/v1/models",
+            "predict": f"{prefix}/predict",
+            "predict_batch": f"{prefix}/predict/batch",
+            "models": f"{prefix}/models",
         }
     }
 
@@ -88,7 +91,7 @@ async def health_check():
 
     return HealthResponse(
         status="healthy",
-        api_version="1.0.0",
+        api_version=config.api.version,
         gpu_available=gpu_available,
         gpu_count=gpu_info.get("device_count", 0)
     )
@@ -96,10 +99,11 @@ async def health_check():
 
 if __name__ == "__main__":
     # Run with: python -m src.api.app
+    # Configuration is loaded from configs/app_config.yaml and environment-specific overrides
     uvicorn.run(
         "src.api.app:app",
-        host="0.0.0.0",
-        port=8000,
-        reload=True,
-        log_level="info"
+        host=config.api.host,
+        port=config.api.port,
+        reload=config.debug,
+        log_level=config.logging.level.lower()
     )

@@ -1,0 +1,79 @@
+# Production Environment Configuration
+# These settings override app_config.yaml for production
+
+environment: "production"
+debug: false
+
+api:
+  host: "0.0.0.0"
+  port: 8000
+  cors:
+    allowed_origins:
+      - "https://example.com"
+      - "https://www.example.com"
+      - "https://app.example.com"
+
+  # Authentication required in production
+  enable_auth: true
+  # MUST set via environment variable: APP_API__SECRET_KEY
+  access_token_expire_minutes: 60
+
+  # Stricter limits in production
+  max_file_size_mb: 5
+  max_batch_rows: 5000
+
+# Production data paths (typically cloud storage)
+data:
+  raw_data_dir: "s3://prod-heart-disease/raw"
+  processed_data_dir: "s3://prod-heart-disease/processed"
+
+# Full hyperparameter tuning for production
+hyperparameters:
+  default_trials: 100
+  cv_folds: 5
+
+# Model configuration for production
+model:
+  cv_folds: 10  # More rigorous CV in production
+  use_gpu: true
+  device_id: 0
+  n_jobs: -1
+
+# MLOps settings for production
+mlops:
+  drift_detection:
+    significance_level: 0.01  # Stricter threshold
+    psi_threshold: 0.15  # More sensitive to drift
+    max_reports: 1000
+
+  monitoring:
+    accuracy_drop_threshold: 0.03  # More sensitive
+    drift_score_threshold: 0.2  # More sensitive
+    error_rate_threshold: 0.1  # Stricter
+    prediction_latency_ms: 500  # Stricter SLA
+    max_alerts_history: 10000
+
+  retraining:
+    performance_threshold: 0.03  # More sensitive
+    min_samples_required: 500  # More data required
+    interval_days: 14  # More frequent retraining
+
+  max_query_limit: 5000  # Lower limit for production
+
+# Visualization
+visualization:
+  show_plots: false
+  save_plots: true
+  dpi: 300
+  plots_dir: "s3://prod-heart-disease/reports/figures"
+
+# Logging
+logging:
+  level: "WARNING"  # Less verbose in production
+  log_file: "app_production.log"
+  max_bytes: 104857600  # 100 MB
+  backup_count: 20
+
+# MLflow (production tracking server)
+mlflow_tracking_uri: "https://mlflow.example.com"
+mlflow_experiment_name: "heart_disease_production"
