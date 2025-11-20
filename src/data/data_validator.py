@@ -1,46 +1,48 @@
 """Data validation module for ensuring data quality."""
 
-from typing import Dict, List, Optional, Tuple
+from typing import Dict, List, Optional, Tuple, Any
 
 import numpy as np
 import pandas as pd
 
-from ..utils.config import get_config
+from ..config import get_config
+from ..config.schemas import ValidationConfig
+from ..core.interfaces import IDataValidator
 from ..utils.exceptions import DataValidationError
 from ..utils.logger import get_logger
 
 logger = get_logger(__name__)
 
 
-class DataValidator:
-    """Validate data quality and schema for heart disease datasets."""
+class DataValidator(IDataValidator):
+    """Validate data quality and schema for heart disease datasets.
 
-    def __init__(self):
-        """Initialize DataValidator."""
-        self.config = get_config()
-        self.expected_features = self._get_expected_features()
-        self.target_column = self.config.get("features.target", "target")
+    This implementation uses configuration for validation rules, including
+    feature ranges, missing value thresholds, and required features.
+    """
 
-    def _get_expected_features(self) -> List[str]:
+    def __init__(self, config: Optional[ValidationConfig] = None):
+        """Initialize DataValidator.
+
+        Args:
+            config: Validation configuration. If None, loads from global config.
         """
-        Get expected features from configuration.
+        if config is None:
+            app_config = get_config()
+            config = app_config.validation
 
-        Returns:
-            List of expected feature names
-        """
-        categorical = self.config.get("features.categorical", [])
-        continuous = self.config.get("features.continuous", [])
-        target = self.config.get("features.target", "target")
+        self.config = config
+        self.expected_features = config.required_features
+        self.target_column = config.target_column
 
-        return categorical + continuous + [target]
+        logger.debug(f"DataValidator initialized with {len(self.expected_features)} expected features")
 
     def validate_schema(
         self,
         df: pd.DataFrame,
         strict: bool = False
     ) -> Tuple[bool, List[str]]:
-        """
-        Validate that DataFrame has expected columns.
+        """Validate that DataFrame has expected columns.
 
         Args:
             df: DataFrame to validate
@@ -54,13 +56,13 @@ class DataValidator:
         # Check for missing columns
         missing_cols = set(self.expected_features) - set(df.columns)
         if missing_cols:
-            issues.append(f"Missing columns: {missing_cols}")
+            issues.append(f"Missing required columns: {sorted(missing_cols)}")
 
         # Check for extra columns in strict mode
         if strict:
-            extra_cols = set(df.columns) - set(self.expected_features)
+            extra_cols = set(df.columns) - set(self.expected_features + [self.target_column])
             if extra_cols:
-                issues.append(f"Extra columns: {extra_cols}")
+                issues.append(f"Extra columns not in schema: {sorted(extra_cols)}")
 
         is_valid = len(issues) == 0
 
@@ -71,9 +73,8 @@ class DataValidator:
 
         return is_valid, issues
 
-    def validate_data_types(self, df: pd.DataFrame) -> Tuple[bool, List[str]]:
-        """
-        Validate data types of columns.
+    def validate_ranges(self, df: pd.DataFrame) -> Tuple[bool, List[str]]:
+        """Validate that values are within expected ranges.
 
         Args:
             df: DataFrame to validate
@@ -83,77 +84,28 @@ class DataValidator:
         """
         issues = []
 
-        categorical_features = self.config.get("features.categorical", [])
-        continuous_features = self.config.get("features.continuous", [])
+        # Use configured ranges
+        for feature, range_config in self.config.ranges.items():
+            if feature not in df.columns:
+                continue
 
-        # Check continuous features are numeric
-        for col in continuous_features:
-            if col in df.columns:
-                if not pd.api.types.is_numeric_dtype(df[col]):
-                    issues.append(f"Column '{col}' should be numeric but is {df[col].dtype}")
+            min_val = range_config.min
+            max_val = range_config.max
 
-        # Check categorical features (can be numeric or object)
-        for col in categorical_features:
-            if col in df.columns:
-                if not (pd.api.types.is_numeric_dtype(df[col]) or
-                       pd.api.types.is_object_dtype(df[col])):
-                    issues.append(f"Column '{col}' has unexpected dtype: {df[col].dtype}")
+            col_min = df[feature].min()
+            col_max = df[feature].max()
 
-        is_valid = len(issues) == 0
+            if col_min < min_val:
+                issues.append(
+                    f"Column '{feature}' has values below minimum: "
+                    f"{col_min} < {min_val}"
+                )
 
-        if is_valid:
-            logger.info("Data type validation passed")
-        else:
-            logger.warning(f"Data type validation issues: {issues}")
-
-        return is_valid, issues
-
-    def validate_value_ranges(self, df: pd.DataFrame) -> Tuple[bool, List[str]]:
-        """
-        Validate that values are within expected ranges.
-
-        Args:
-            df: DataFrame to validate
-
-        Returns:
-            Tuple of (is_valid, list of issues)
-        """
-        issues = []
-
-        # Define expected ranges
-        ranges = {
-            "age": (0, 120),
-            "sex": (0, 1),
-            "cp": (0, 4),
-            "trestbps": (50, 250),
-            "chol": (100, 600),
-            "fbs": (0, 1),
-            "restecg": (0, 2),
-            "thalach": (50, 250),
-            "exang": (0, 1),
-            "oldpeak": (0, 10),
-            "slope": (0, 3),
-            "ca": (0, 4),
-            "thal": (0, 7),
-            "target": (0, 4),
-        }
-
-        for col, (min_val, max_val) in ranges.items():
-            if col in df.columns:
-                col_min = df[col].min()
-                col_max = df[col].max()
-
-                if col_min < min_val:
-                    issues.append(
-                        f"Column '{col}' has values below minimum: "
-                        f"{col_min} < {min_val}"
-                    )
-
-                if col_max > max_val:
-                    issues.append(
-                        f"Column '{col}' has values above maximum: "
-                        f"{col_max} > {max_val}"
-                    )
+            if col_max > max_val:
+                issues.append(
+                    f"Column '{feature}' has values above maximum: "
+                    f"{col_max} > {max_val}"
+                )
 
         is_valid = len(issues) == 0
 
@@ -164,21 +116,60 @@ class DataValidator:
 
         return is_valid, issues
 
-    def validate_missing_values(
-        self,
-        df: pd.DataFrame,
-        threshold: float = 0.5
-    ) -> Tuple[bool, List[str]]:
-        """
-        Validate missing values in DataFrame.
+    def validate_data_types(self, df: pd.DataFrame) -> Tuple[bool, List[str]]:
+        """Validate data types of columns.
 
         Args:
             df: DataFrame to validate
-            threshold: Maximum allowed missing percentage (0-1)
 
         Returns:
             Tuple of (is_valid, list of issues)
         """
+        issues = []
+
+        # Check that all required features are present and numeric
+        for feature in self.expected_features:
+            if feature in df.columns:
+                if not pd.api.types.is_numeric_dtype(df[feature]):
+                    issues.append(
+                        f"Column '{feature}' should be numeric but is {df[feature].dtype}"
+                    )
+
+        # Check target column if present
+        if self.target_column in df.columns:
+            if not pd.api.types.is_numeric_dtype(df[self.target_column]):
+                issues.append(
+                    f"Target column '{self.target_column}' should be numeric "
+                    f"but is {df[self.target_column].dtype}"
+                )
+
+        is_valid = len(issues) == 0
+
+        if is_valid:
+            logger.info("Data type validation passed")
+        else:
+            logger.warning(f"Data type validation issues: {issues}")
+
+        return is_valid, issues
+
+    def validate_missing_values(
+        self,
+        df: pd.DataFrame,
+        threshold: Optional[float] = None
+    ) -> Tuple[bool, List[str]]:
+        """Validate missing values in DataFrame.
+
+        Args:
+            df: DataFrame to validate
+            threshold: Maximum allowed missing percentage (0-1).
+                      If None, uses config value.
+
+        Returns:
+            Tuple of (is_valid, list of issues)
+        """
+        if threshold is None:
+            threshold = self.config.missing_threshold
+
         issues = []
 
         missing_pct = df.isnull().sum() / len(df)
@@ -193,15 +184,14 @@ class DataValidator:
         is_valid = len(issues) == 0
 
         if is_valid:
-            logger.info("Missing value validation passed")
+            logger.info(f"Missing value validation passed (threshold={threshold*100:.1f}%)")
         else:
             logger.warning(f"Missing value validation issues: {issues}")
 
         return is_valid, issues
 
     def validate_duplicates(self, df: pd.DataFrame) -> Tuple[bool, List[str]]:
-        """
-        Check for duplicate rows.
+        """Check for duplicate rows.
 
         Args:
             df: DataFrame to validate
@@ -218,7 +208,7 @@ class DataValidator:
             issues.append(
                 f"Found {n_duplicates} duplicate rows ({duplicate_pct:.2f}%)"
             )
-            logger.warning(f"Found {n_duplicates} duplicate rows")
+            logger.warning(f"Found {n_duplicates} duplicate rows ({duplicate_pct:.2f}%)")
         else:
             logger.info("No duplicate rows found")
 
@@ -228,18 +218,21 @@ class DataValidator:
     def validate_target_distribution(
         self,
         df: pd.DataFrame,
-        min_class_percentage: float = 0.1
+        min_class_percentage: Optional[float] = None
     ) -> Tuple[bool, List[str]]:
-        """
-        Validate target variable distribution.
+        """Validate target variable distribution.
 
         Args:
             df: DataFrame to validate
-            min_class_percentage: Minimum percentage for any class
+            min_class_percentage: Minimum percentage for any class.
+                                 If None, uses config value.
 
         Returns:
             Tuple of (is_valid, list of issues)
         """
+        if min_class_percentage is None:
+            min_class_percentage = self.config.min_class_percentage
+
         issues = []
 
         if self.target_column not in df.columns:
@@ -259,7 +252,7 @@ class DataValidator:
 
         # Log target distribution
         logger.info(f"Target distribution:\n{target_counts}")
-        logger.info(f"Target percentages:\n{target_pct*100}")
+        logger.info(f"Target percentages:\n{(target_pct*100).round(2)}")
 
         is_valid = len(issues) == 0
         return is_valid, issues
@@ -268,29 +261,28 @@ class DataValidator:
         self,
         df: pd.DataFrame,
         strict_schema: bool = False,
-        missing_threshold: float = 0.5
-    ) -> Dict[str, any]:
-        """
-        Run all validation checks.
+        raise_on_error: bool = True
+    ) -> Dict[str, Any]:
+        """Run all validation checks.
 
         Args:
             df: DataFrame to validate
             strict_schema: Use strict schema validation
-            missing_threshold: Threshold for missing values
+            raise_on_error: Raise exception if critical validation fails
 
         Returns:
             Dictionary containing validation results
 
         Raises:
-            DataValidationError: If critical validation fails
+            DataValidationError: If critical validation fails and raise_on_error=True
         """
-        logger.info("Starting comprehensive data validation")
+        logger.info(f"Starting comprehensive data validation on {len(df)} rows")
 
         results = {
             "schema": self.validate_schema(df, strict=strict_schema),
             "data_types": self.validate_data_types(df),
-            "value_ranges": self.validate_value_ranges(df),
-            "missing_values": self.validate_missing_values(df, missing_threshold),
+            "value_ranges": self.validate_ranges(df),
+            "missing_values": self.validate_missing_values(df),
             "duplicates": self.validate_duplicates(df),
             "target_distribution": self.validate_target_distribution(df),
         }
@@ -302,21 +294,30 @@ class DataValidator:
             if not results[check][0]
         ]
 
-        if failed_critical:
-            error_msg = f"Critical validation failed: {failed_critical}"
-            logger.error(error_msg)
-            raise DataValidationError(error_msg)
-
         # Count total issues
         total_issues = sum(len(issues) for _, issues in results.values())
 
-        logger.info(f"Validation complete. Total issues: {total_issues}")
+        # Create summary
+        results["summary"] = {
+            "total_checks": len(results) - 1,  # Exclude summary itself
+            "passed_checks": sum(1 for k, v in results.items() if k != "summary" and v[0]),
+            "failed_critical": failed_critical,
+            "total_issues": total_issues,
+            "is_valid": len(failed_critical) == 0,
+        }
+
+        if failed_critical:
+            error_msg = f"Critical validation failed: {failed_critical}"
+            logger.error(error_msg)
+            if raise_on_error:
+                raise DataValidationError(error_msg)
+        else:
+            logger.info(f"Validation complete. {total_issues} total issues found.")
 
         return results
 
-    def get_data_quality_report(self, df: pd.DataFrame) -> Dict[str, any]:
-        """
-        Generate comprehensive data quality report.
+    def get_data_quality_report(self, df: pd.DataFrame) -> Dict[str, Any]:
+        """Generate comprehensive data quality report.
 
         Args:
             df: DataFrame to analyze
@@ -331,28 +332,105 @@ class DataValidator:
             "n_rows": len(df),
             "n_columns": len(df.columns),
             "columns": df.columns.tolist(),
-            "dtypes": df.dtypes.astype(str).to_dict(),
+            "dtypes": {k: str(v) for k, v in df.dtypes.to_dict().items()},
             "missing_values": df.isnull().sum().to_dict(),
-            "missing_percentage": (df.isnull().sum() / len(df) * 100).to_dict(),
-            "duplicates": df.duplicated().sum(),
-            "memory_usage_mb": df.memory_usage(deep=True).sum() / 1024**2,
+            "missing_percentage": (df.isnull().sum() / len(df) * 100).round(2).to_dict(),
+            "duplicates": int(df.duplicated().sum()),
+            "memory_usage_mb": round(df.memory_usage(deep=True).sum() / 1024**2, 2),
         }
 
         # Numeric columns summary
-        numeric_cols = df.select_dtypes(include=[np.number]).columns
+        numeric_cols = df.select_dtypes(include=[np.number]).columns.tolist()
         if len(numeric_cols) > 0:
             report["numeric_summary"] = df[numeric_cols].describe().to_dict()
+            report["numeric_columns"] = numeric_cols
 
         # Categorical columns summary
-        categorical_cols = df.select_dtypes(include=["object", "category"]).columns
+        categorical_cols = df.select_dtypes(include=["object", "category"]).columns.tolist()
         if len(categorical_cols) > 0:
             report["categorical_summary"] = {
                 col: df[col].value_counts().to_dict()
                 for col in categorical_cols
             }
+            report["categorical_columns"] = categorical_cols
 
         # Target distribution if present
         if self.target_column in df.columns:
             report["target_distribution"] = df[self.target_column].value_counts().to_dict()
+            report["target_balance"] = (
+                df[self.target_column].value_counts(normalize=True) * 100
+            ).round(2).to_dict()
 
         return report
+
+    def validate_feature_completeness(
+        self,
+        df: pd.DataFrame,
+        min_completeness: float = 0.9
+    ) -> Tuple[bool, List[str]]:
+        """Validate that features have sufficient non-missing data.
+
+        Args:
+            df: DataFrame to validate
+            min_completeness: Minimum completeness ratio (0-1)
+
+        Returns:
+            Tuple of (is_valid, list of issues)
+        """
+        issues = []
+
+        completeness = (1 - df.isnull().sum() / len(df))
+
+        for feature in self.expected_features:
+            if feature in df.columns:
+                if completeness[feature] < min_completeness:
+                    issues.append(
+                        f"Feature '{feature}' has insufficient completeness: "
+                        f"{completeness[feature]*100:.1f}% (min: {min_completeness*100:.1f}%)"
+                    )
+
+        is_valid = len(issues) == 0
+
+        if is_valid:
+            logger.info(f"Feature completeness validation passed (min={min_completeness*100:.1f}%)")
+        else:
+            logger.warning(f"Feature completeness issues: {issues}")
+
+        return is_valid, issues
+
+    def validate_unique_ids(
+        self,
+        df: pd.DataFrame,
+        id_column: Optional[str] = None
+    ) -> Tuple[bool, List[str]]:
+        """Validate that ID column has unique values.
+
+        Args:
+            df: DataFrame to validate
+            id_column: Name of ID column. If None, skips validation.
+
+        Returns:
+            Tuple of (is_valid, list of issues)
+        """
+        if id_column is None or id_column not in df.columns:
+            return True, []
+
+        issues = []
+
+        n_unique = df[id_column].nunique()
+        n_rows = len(df)
+
+        if n_unique != n_rows:
+            issues.append(
+                f"ID column '{id_column}' has duplicate values: "
+                f"{n_unique} unique IDs for {n_rows} rows"
+            )
+
+        is_valid = len(issues) == 0
+
+        if is_valid:
+            logger.info(f"ID uniqueness validation passed for '{id_column}'")
+        else:
+            logger.warning(f"ID uniqueness issues: {issues}")
+
+        return is_valid, issues
