@@ -83,24 +83,139 @@ A production-ready, end-to-end machine learning system for predicting heart dise
 - **Health Monitoring**: Health check endpoints and application insights ready
 - **Alert System**: Multi-channel alerts (email, Slack) for model performance
 
+## Architecture
+
+### 🏗️ Modular, Config-Driven Design
+
+This project follows a **100% modular, config-driven architecture** with dependency injection, making it production-ready, testable, and highly maintainable.
+
+#### Key Architecture Principles
+
+- **📦 Dependency Injection**: Lightweight DI container for loose coupling
+- **🔧 Configuration-Driven**: All settings from YAML configs with environment overrides
+- **🎯 Interface-Based Design**: Abstract interfaces for all major components
+- **🔒 Type-Safe Validation**: Pydantic models for configuration validation
+- **🌍 Environment-Aware**: Separate configs for dev/staging/production
+- **🧪 Fully Testable**: Easy mocking and testing with DI
+
+#### Configuration System
+
+**Multi-Layer Configuration:**
+```
+Base Config (app_config.yaml)
+    ↓
+Environment Override (production_config.yaml)
+    ↓
+Environment Variables (APP_*)
+```
+
+**Example Usage:**
+```python
+from src.config import get_config
+
+# Load configuration
+config = get_config()  # Automatically loads based on ENV variable
+
+# Access config values
+print(config.api.port)  # Type-safe access
+print(config.model.use_gpu)  # All settings validated
+```
+
+**Environment-Specific Configs:**
+```bash
+# Development
+ENV=development python src/api/app.py
+
+# Production with overrides
+ENV=production APP_API__PORT=9000 python src/api/app.py
+```
+
+#### Dependency Injection
+
+**Bootstrap Application:**
+```python
+from src.bootstrap import initialize_for_training
+
+# Initialize entire application with DI
+app = initialize_for_training(environment="production")
+
+# All services ready to use
+data_loader = app['data_loader']
+validator = app['data_validator']
+preprocessor = app['preprocessor']
+feature_engineer = app['feature_engineer']
+```
+
+**Component Interfaces:**
+- `IDataLoader` - Data loading operations
+- `IDataValidator` - Data validation operations
+- `IDataPreprocessor` - Data preprocessing operations
+- `IFeatureEngineer` - Feature engineering operations
+- `IModelTrainer` - Model training operations (planned)
+- `IPredictor` - Prediction operations (planned)
+- `IDriftDetector` - Drift detection operations (planned)
+- `IMonitor` - Monitoring operations (planned)
+- `IRetrainer` - Retraining operations (planned)
+
+#### JWT Authentication
+
+**Optional JWT authentication system:**
+```bash
+# Enable authentication
+export APP_API__ENABLE_AUTH=true
+export APP_API__SECRET_KEY="your-secret-key"
+
+# Login to get token
+curl -X POST http://localhost:8000/api/v1/auth/login \
+  -d "username=admin&password=secret"
+
+# Use token for authenticated requests
+curl -H "Authorization: Bearer TOKEN" \
+  http://localhost:8000/api/v1/predict \
+  -d '{"age": 55, ...}'
+```
+
+See [Authentication Guide](docs/AUTHENTICATION_GUIDE.md) for complete documentation.
+
+#### Architecture Documentation
+
+For detailed architecture information, see:
+- [Configuration Guide](docs/CONFIGURATION_GUIDE.md) - Complete config reference
+- [Modular Architecture](docs/MODULAR_ARCHITECTURE.md) - Design patterns and DI usage
+- [Authentication Guide](docs/AUTHENTICATION_GUIDE.md) - JWT authentication setup
+- [Refactoring Status](docs/REFACTORING_STATUS.md) - Current progress and roadmap
+
 ## Project Structure
 
 ```
 heart-disease-prediction/
 ├── src/
+│   ├── config/                      # 🆕 Configuration system
+│   │   ├── __init__.py             # Config exports
+│   │   ├── schemas.py              # Pydantic config models
+│   │   ├── loader.py               # YAML config loader
+│   │   └── manager.py              # Config singleton manager
+│   ├── core/                        # 🆕 Core infrastructure
+│   │   ├── __init__.py             # Core exports
+│   │   ├── interfaces.py           # Abstract interfaces (9 interfaces)
+│   │   └── container.py            # Dependency injection container
+│   ├── bootstrap.py                 # 🆕 Application initialization
 │   ├── api/
-│   │   ├── app.py                   # FastAPI application
-│   │   ├── routes.py                # API endpoints
-│   │   └── schemas.py               # Pydantic models
+│   │   ├── app.py                  # FastAPI application (config-driven)
+│   │   ├── routes.py               # API endpoints (config-driven)
+│   │   ├── auth.py                 # 🆕 JWT authentication
+│   │   ├── auth_routes.py          # 🆕 Authentication endpoints
+│   │   ├── middleware.py           # 🆕 Authentication middleware
+│   │   └── schemas.py              # Pydantic request/response models
 │   ├── web/
-│   │   └── streamlit_app.py        # Streamlit web interface
+│   │   └── streamlit_app.py       # Streamlit web interface
 │   ├── data/
-│   │   ├── data_loader.py          # Load data from multiple sources
-│   │   ├── data_validator.py       # Validate data quality
-│   │   └── data_preprocessor.py    # Clean & preprocess data
+│   │   ├── data_loader.py         # ♻️ IDataLoader implementation
+│   │   ├── data_validator.py      # ♻️ IDataValidator implementation
+│   │   └── data_preprocessor.py   # ♻️ IDataPreprocessor implementation
 │   ├── features/
-│   │   ├── feature_engineering.py  # Create engineered features
-│   │   └── transformers.py         # Custom sklearn transformers
+│   │   ├── feature_engineering.py # ♻️ IFeatureEngineer implementation
+│   │   └── transformers.py        # Custom sklearn transformers
 │   ├── models/
 │   │   ├── train.py               # Training pipeline with MLflow
 │   │   ├── evaluate.py            # Comprehensive evaluation
@@ -123,8 +238,10 @@ heart-disease-prediction/
 │       ├── gpu_utils.py           # GPU detection and management
 │       └── exceptions.py          # Custom exceptions
 ├── configs/
-│   ├── config.yaml               # Main configuration
-│   └── model_config.yaml         # Model hyperparameters
+│   ├── app_config.yaml           # 🆕 Base configuration (Pydantic-validated)
+│   ├── development_config.yaml   # 🆕 Development overrides
+│   ├── staging_config.yaml       # 🆕 Staging overrides
+│   └── production_config.yaml    # 🆕 Production overrides
 ├── data/
 │   ├── raw/                      # Original datasets
 │   ├── processed/                # Cleaned datasets
@@ -144,10 +261,19 @@ heart-disease-prediction/
 │   │   └── azure-deploy.yml    # CI/CD pipeline
 │   └── CICD_SETUP.md           # CI/CD setup guide
 ├── notebooks/                    # Jupyter notebooks
-├── tests/                        # Test suite
-│   ├── test_api.py              # API endpoint tests
-│   └── ...                      # Other tests
+├── tests/                        # 🆕 Comprehensive test suite
+│   ├── conftest.py              # 🆕 Pytest configuration & fixtures
+│   ├── unit/                    # 🆕 Unit tests with DI mocking
+│   │   ├── test_data_loader.py # 🆕 DataLoader unit tests
+│   │   └── test_data_validator.py # 🆕 DataValidator unit tests
+│   ├── integration/             # 🆕 Integration tests
+│   │   └── test_api_integration.py # 🆕 API integration tests
+│   └── test_api.py              # Legacy API tests
 ├── docs/                         # Documentation
+│   ├── CONFIGURATION_GUIDE.md   # 🆕 Complete config reference
+│   ├── MODULAR_ARCHITECTURE.md  # 🆕 Architecture patterns & DI guide
+│   ├── AUTHENTICATION_GUIDE.md  # 🆕 JWT authentication documentation
+│   ├── REFACTORING_STATUS.md    # 🆕 Progress tracking & roadmap
 │   ├── API_DOCUMENTATION.md     # Complete API reference
 │   ├── API_QUICKSTART.md        # API quick start guide
 │   ├── GPU_SETUP.md             # GPU setup guide

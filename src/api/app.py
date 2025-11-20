@@ -10,6 +10,7 @@ import pandas as pd
 import uvicorn
 
 from .routes import router
+from .auth_routes import router as auth_router
 from .schemas import PredictionResponse, HealthResponse
 from ..config import get_config
 from ..utils.logger import get_logger
@@ -37,8 +38,15 @@ app.add_middleware(
     allow_headers=config.api.cors.allow_headers,
 )
 
+# Optional: Add custom middleware (uncomment to enable)
+# from .middleware import RequestLoggingMiddleware, AuthenticationMiddleware, RateLimitMiddleware
+# app.add_middleware(RequestLoggingMiddleware)
+# app.add_middleware(AuthenticationMiddleware)
+# app.add_middleware(RateLimitMiddleware, max_requests=100, window_seconds=60)
+
 # Include routers with config-driven prefix
 app.include_router(router, prefix=config.api.prefix)
+app.include_router(auth_router, prefix=config.api.prefix)
 
 
 @app.on_event("startup")
@@ -73,12 +81,15 @@ async def root():
         "version": config.api.version,
         "environment": config.environment,
         "status": "running",
+        "authentication_enabled": config.api.enable_auth,
         "docs": "/docs",
         "health": f"{prefix}/health",
         "endpoints": {
             "predict": f"{prefix}/predict",
             "predict_batch": f"{prefix}/predict/batch",
             "models": f"{prefix}/models",
+            "auth_login": f"{prefix}/auth/login",
+            "auth_status": f"{prefix}/auth/status",
         }
     }
 

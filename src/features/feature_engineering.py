@@ -1,6 +1,6 @@
 """Feature engineering module for creating and selecting features."""
 
-from typing import List, Optional, Tuple
+from typing import List, Optional, Tuple, Any, Dict
 
 import numpy as np
 import pandas as pd
@@ -8,39 +8,124 @@ from sklearn.feature_selection import (
     SelectKBest,
     f_classif,
     mutual_info_classif,
+    chi2,
     RFE
 )
 from sklearn.ensemble import RandomForestClassifier
 
-from ..utils.config import get_config
+from ..config import get_config
+from ..config.schemas import FeatureEngineeringConfig
+from ..core.interfaces import IFeatureEngineer
 from ..utils.exceptions import FeatureEngineeringError
 from ..utils.logger import get_logger
 
 logger = get_logger(__name__)
 
 
-class FeatureEngineer:
-    """Create and engineer features for heart disease prediction."""
+class FeatureEngineer(IFeatureEngineer):
+    """Create and engineer features for heart disease prediction.
 
-    def __init__(self):
-        """Initialize FeatureEngineer."""
-        self.config = get_config()
-        self.target_column = self.config.get("features.target", "target")
+    This implementation uses configuration for all feature engineering parameters,
+    including interaction pairs, binning thresholds, and domain-specific rules.
+    """
+
+    def __init__(self, config: Optional[FeatureEngineeringConfig] = None):
+        """Initialize FeatureEngineer.
+
+        Args:
+            config: Feature engineering configuration. If None, loads from global config.
+        """
+        if config is None:
+            app_config = get_config()
+            config = app_config.feature_engineering
+
+        self.config = config
         self.feature_selector = None
         self.selected_features = None
+
+        logger.debug(f"FeatureEngineer initialized with k_best={config.k_best_features}")
+
+    def create_features(self, df: pd.DataFrame) -> pd.DataFrame:
+        """Create all engineered features.
+
+        This is the main entry point that creates all configured feature types.
+
+        Args:
+            df: Input DataFrame
+
+        Returns:
+            DataFrame with all engineered features
+
+        Raises:
+            FeatureEngineeringError: If feature creation fails
+        """
+        logger.info(f"Creating engineered features for {len(df)} samples")
+
+        try:
+            df_engineered = df.copy()
+
+            # 1. Create interaction features
+            df_engineered = self.create_interaction_features(df_engineered)
+
+            # 2. Create polynomial features (if configured)
+            if self.config.include_polynomial:
+                df_engineered = self.create_polynomial_features(df_engineered)
+
+            # 3. Create binned features
+            df_engineered = self.create_binned_features(df_engineered)
+
+            # 4. Create domain-specific features
+            df_engineered = self.create_domain_features(df_engineered)
+
+            logger.info(
+                f"Feature engineering complete: {len(df.columns)} -> {len(df_engineered.columns)} features"
+            )
+
+            return df_engineered
+
+        except Exception as e:
+            raise FeatureEngineeringError(f"Failed to create features: {str(e)}")
+
+    def select_features(
+        self,
+        X: pd.DataFrame,
+        y: pd.Series
+    ) -> Tuple[pd.DataFrame, List[str]]:
+        """Select best features using configured method.
+
+        Args:
+            X: Features DataFrame
+            y: Target Series
+
+        Returns:
+            Tuple of (selected_features_df, selected_feature_names)
+
+        Raises:
+            FeatureEngineeringError: If feature selection fails
+        """
+        method = self.config.feature_selection_method
+        k = self.config.k_best_features
+
+        logger.info(f"Selecting features using method={method}, k={k}")
+
+        if method in ["mutual_info", "f_classif", "chi2"]:
+            return self.select_features_univariate(X, y, k=k, score_func=method)
+        elif method == "rfe":
+            return self.select_features_rfe(X, y, n_features=k)
+        else:
+            raise FeatureEngineeringError(f"Unknown feature selection method: {method}")
 
     def create_interaction_features(
         self,
         df: pd.DataFrame,
         feature_pairs: Optional[List[Tuple[str, str]]] = None
     ) -> pd.DataFrame:
-        """
-        Create interaction features between specified pairs.
+        """Create interaction features between specified pairs.
 
         Args:
             df: Input DataFrame
             feature_pairs: List of (feature1, feature2) tuples.
-                          If None, creates common interactions
+                          If None, uses configured interaction pairs
 
         Returns:
             DataFrame with added interaction features
@@ -48,13 +133,7 @@ class FeatureEngineer:
         df_new = df.copy()
 
         if feature_pairs is None:
-            # Define common meaningful interactions
-            feature_pairs = [
-                ("age", "chol"),
-                ("age", "thalach"),
-                ("age", "trestbps"),
-                ("chol", "trestbps"),
-            ]
+            feature_pairs = self.config.interaction_pairs
 
         logger.info(f"Creating {len(feature_pairs)} interaction features")
 
@@ -77,25 +156,27 @@ class FeatureEngineer:
         self,
         df: pd.DataFrame,
         features: Optional[List[str]] = None,
-        degree: int = 2
+        degree: Optional[int] = None
     ) -> pd.DataFrame:
-        """
-        Create polynomial features for specified columns.
+        """Create polynomial features for specified columns.
 
         Args:
             df: Input DataFrame
-            features: List of features to create polynomials for
-                     If None, uses continuous features
-            degree: Polynomial degree (typically 2 or 3)
+            features: List of features to create polynomials for.
+                     If None, uses numeric columns
+            degree: Polynomial degree. If None, uses config default
 
         Returns:
             DataFrame with added polynomial features
         """
+        if degree is None:
+            degree = self.config.polynomial_degree
+
         df_new = df.copy()
 
         if features is None:
-            features = self.config.get("features.continuous", [])
-            features = [f for f in features if f in df.columns]
+            # Use all numeric columns
+            features = df.select_dtypes(include=[np.number]).columns.tolist()
 
         logger.info(f"Creating polynomial features (degree={degree}) for {len(features)} features")
 
@@ -116,15 +197,14 @@ class FeatureEngineer:
     def create_binned_features(
         self,
         df: pd.DataFrame,
-        bins_config: Optional[dict] = None
+        bins_config: Optional[Dict[str, Dict]] = None
     ) -> pd.DataFrame:
-        """
-        Create binned (discretized) features from continuous variables.
+        """Create binned (discretized) features from continuous variables.
 
         Args:
             df: Input DataFrame
-            bins_config: Dictionary mapping feature names to bin edges
-                        If None, uses default binning
+            bins_config: Dictionary mapping feature names to bin configurations.
+                        If None, uses configured bins
 
         Returns:
             DataFrame with added binned features
@@ -132,19 +212,19 @@ class FeatureEngineer:
         df_new = df.copy()
 
         if bins_config is None:
-            # Default binning for age groups and other features
+            # Use configured bins
             bins_config = {
                 "age": {
-                    "bins": [0, 40, 50, 60, 70, 120],
-                    "labels": ["<40", "40-50", "50-60", "60-70", "70+"]
+                    "bins": self.config.age_bins,
+                    "labels": [f"age_{i}" for i in range(len(self.config.age_bins) - 1)]
                 },
                 "chol": {
-                    "bins": [0, 200, 240, 280, 600],
-                    "labels": ["normal", "borderline", "high", "very_high"]
+                    "bins": self.config.chol_bins,
+                    "labels": [f"chol_{i}" for i in range(len(self.config.chol_bins) - 1)]
                 },
                 "trestbps": {
-                    "bins": [0, 120, 140, 180, 300],
-                    "labels": ["normal", "elevated", "high", "very_high"]
+                    "bins": self.config.bp_bins,
+                    "labels": [f"bp_{i}" for i in range(len(self.config.bp_bins) - 1)]
                 }
             }
 
@@ -175,8 +255,9 @@ class FeatureEngineer:
             raise FeatureEngineeringError(f"Failed to create binned features: {str(e)}")
 
     def create_domain_features(self, df: pd.DataFrame) -> pd.DataFrame:
-        """
-        Create domain-specific features based on medical knowledge.
+        """Create domain-specific features based on medical knowledge.
+
+        Uses configured thresholds from domain_rules.
 
         Args:
             df: Input DataFrame
@@ -185,43 +266,53 @@ class FeatureEngineer:
             DataFrame with added domain features
         """
         df_new = df.copy()
+        rules = self.config.domain_rules
 
         logger.info("Creating domain-specific features")
 
         try:
-            # Age-related risk (older = higher risk)
+            # Age-related risk (configurable threshold)
             if "age" in df.columns:
-                df_new["age_risk"] = (df["age"] > 55).astype(int)
+                df_new["age_risk"] = (df["age"] > rules.age_risk_threshold).astype(int)
 
-            # High cholesterol indicator
+            # High cholesterol indicator (configurable threshold)
             if "chol" in df.columns:
-                df_new["high_chol"] = (df["chol"] > 240).astype(int)
+                df_new["high_chol"] = (df["chol"] > rules.high_chol_threshold).astype(int)
 
-            # High blood pressure indicator
+            # High blood pressure indicator (configurable threshold)
             if "trestbps" in df.columns:
-                df_new["high_bp"] = (df["trestbps"] > 140).astype(int)
+                df_new["high_bp"] = (df["trestbps"] > rules.high_bp_threshold).astype(int)
 
-            # Low max heart rate (concern for older patients)
+            # Low max heart rate (using configurable formula and threshold)
             if "thalach" in df.columns and "age" in df.columns:
-                max_hr_predicted = 220 - df["age"]
+                # Parse formula (e.g., "220-age")
+                if rules.max_hr_formula == "220-age":
+                    max_hr_predicted = 220 - df["age"]
+                else:
+                    # Fallback to standard formula
+                    max_hr_predicted = 220 - df["age"]
+
                 df_new["hr_percentage"] = (df["thalach"] / max_hr_predicted) * 100
-                df_new["low_hr"] = (df_new["hr_percentage"] < 80).astype(int)
+                df_new["low_hr"] = (
+                    df_new["hr_percentage"] < (rules.low_hr_percentage_threshold * 100)
+                ).astype(int)
 
             # Combined risk factors
             risk_columns = [col for col in ["age_risk", "high_chol", "high_bp"] if col in df_new.columns]
             if risk_columns:
                 df_new["total_risk_factors"] = df_new[risk_columns].sum(axis=1)
 
-            # BMI proxy (if height/weight available - typically not in these datasets)
             # Cholesterol to age ratio
             if "chol" in df.columns and "age" in df.columns:
                 df_new["chol_age_ratio"] = df["chol"] / df["age"]
 
-            # Blood pressure pulse pressure proxy
-            # (systolic - diastolic, but we only have systolic)
-            # Using age as proxy for diastolic risk
+            # Blood pressure-age interaction
             if "trestbps" in df.columns and "age" in df.columns:
                 df_new["bp_age_interaction"] = df["trestbps"] * (df["age"] / 100)
+
+            # Exercise-induced angina with oldpeak (ST depression)
+            if "exang" in df.columns and "oldpeak" in df.columns:
+                df_new["angina_severity"] = df["exang"] * df["oldpeak"]
 
             logger.info(f"Created {len(df_new.columns) - len(df.columns)} domain features")
             logger.info(f"Total features: {len(df_new.columns)}")
@@ -235,21 +326,26 @@ class FeatureEngineer:
         self,
         X: pd.DataFrame,
         y: pd.Series,
-        k: int = 10,
-        score_func: str = "f_classif"
+        k: Optional[int] = None,
+        score_func: str = "mutual_info"
     ) -> Tuple[pd.DataFrame, List[str]]:
-        """
-        Select top k features using univariate statistical tests.
+        """Select top k features using univariate statistical tests.
 
         Args:
             X: Feature DataFrame
             y: Target Series
-            k: Number of features to select
-            score_func: Scoring function ('f_classif', 'mutual_info')
+            k: Number of features to select. If None, uses config default
+            score_func: Scoring function ('f_classif', 'mutual_info', 'chi2')
 
         Returns:
             Tuple of (selected features DataFrame, list of feature names)
         """
+        if k is None:
+            k = self.config.k_best_features
+
+        # Ensure k doesn't exceed number of features
+        k = min(k, X.shape[1])
+
         logger.info(f"Selecting top {k} features using {score_func}")
 
         try:
@@ -257,6 +353,8 @@ class FeatureEngineer:
                 selector = SelectKBest(score_func=f_classif, k=k)
             elif score_func == "mutual_info":
                 selector = SelectKBest(score_func=mutual_info_classif, k=k)
+            elif score_func == "chi2":
+                selector = SelectKBest(score_func=chi2, k=k)
             else:
                 raise FeatureEngineeringError(f"Unknown score function: {score_func}")
 
@@ -277,23 +375,36 @@ class FeatureEngineer:
         self,
         X: pd.DataFrame,
         y: pd.Series,
-        n_features: int = 10
+        n_features: Optional[int] = None
     ) -> Tuple[pd.DataFrame, List[str]]:
-        """
-        Select features using Recursive Feature Elimination.
+        """Select features using Recursive Feature Elimination.
 
         Args:
             X: Feature DataFrame
             y: Target Series
-            n_features: Number of features to select
+            n_features: Number of features to select. If None, uses config default
 
         Returns:
             Tuple of (selected features DataFrame, list of feature names)
         """
+        if n_features is None:
+            n_features = self.config.k_best_features
+
+        # Ensure n_features doesn't exceed number of features
+        n_features = min(n_features, X.shape[1])
+
         logger.info(f"Selecting {n_features} features using RFE")
 
         try:
-            estimator = RandomForestClassifier(n_estimators=100, random_state=42)
+            # Get random_state from preprocessing config
+            from ..config import get_config
+            random_state = get_config().preprocessing.random_state
+
+            estimator = RandomForestClassifier(
+                n_estimators=100,
+                random_state=random_state,
+                n_jobs=-1
+            )
             selector = RFE(estimator, n_features_to_select=n_features)
 
             X_selected = selector.fit_transform(X, y)
@@ -307,96 +418,68 @@ class FeatureEngineer:
             return pd.DataFrame(X_selected, columns=selected_features, index=X.index), selected_features
 
         except Exception as e:
-            raise FeatureEngineeringError(f"Failed to perform RFE: {str(e)}")
+            raise FeatureEngineeringError(f"Failed to select features with RFE: {str(e)}")
 
     def get_feature_importance(
         self,
         X: pd.DataFrame,
-        y: pd.Series,
-        method: str = "random_forest"
+        y: pd.Series
     ) -> pd.DataFrame:
-        """
-        Calculate feature importance scores.
+        """Get feature importance scores using Random Forest.
 
         Args:
             X: Feature DataFrame
             y: Target Series
-            method: Method to calculate importance ('random_forest')
 
         Returns:
-            DataFrame with features and their importance scores
+            DataFrame with feature names and importance scores, sorted by importance
         """
-        logger.info(f"Calculating feature importance using {method}")
+        logger.info("Calculating feature importance")
 
         try:
-            if method == "random_forest":
-                model = RandomForestClassifier(n_estimators=200, random_state=42)
-                model.fit(X, y)
-                importances = model.feature_importances_
+            from ..config import get_config
+            random_state = get_config().preprocessing.random_state
 
-                importance_df = pd.DataFrame({
-                    "feature": X.columns,
-                    "importance": importances
-                }).sort_values("importance", ascending=False)
+            rf = RandomForestClassifier(
+                n_estimators=200,
+                random_state=random_state,
+                n_jobs=-1
+            )
+            rf.fit(X, y)
 
-                logger.info("Top 10 important features:")
-                logger.info(f"\n{importance_df.head(10)}")
+            importance_df = pd.DataFrame({
+                'feature': X.columns,
+                'importance': rf.feature_importances_
+            }).sort_values('importance', ascending=False)
 
-                return importance_df
+            logger.info(f"Top 5 features: {importance_df.head()['feature'].tolist()}")
 
-            else:
-                raise FeatureEngineeringError(f"Unknown importance method: {method}")
+            return importance_df
 
         except Exception as e:
             raise FeatureEngineeringError(f"Failed to calculate feature importance: {str(e)}")
 
-    def engineer_features_pipeline(
-        self,
-        df: pd.DataFrame,
-        create_interactions: bool = True,
-        create_polynomials: bool = False,
-        create_bins: bool = False,
-        create_domain: bool = True
-    ) -> pd.DataFrame:
-        """
-        Run complete feature engineering pipeline.
+    def transform_with_selected_features(self, X: pd.DataFrame) -> pd.DataFrame:
+        """Transform features using previously selected features.
 
         Args:
-            df: Input DataFrame
-            create_interactions: Whether to create interaction features
-            create_polynomials: Whether to create polynomial features
-            create_bins: Whether to create binned features
-            create_domain: Whether to create domain-specific features
+            X: Feature DataFrame
 
         Returns:
-            DataFrame with engineered features
+            DataFrame with only selected features
+
+        Raises:
+            FeatureEngineeringError: If feature selection hasn't been performed
         """
-        logger.info("Starting feature engineering pipeline")
+        if self.selected_features is None:
+            raise FeatureEngineeringError(
+                "No features have been selected. Call select_features() first."
+            )
 
-        df_engineered = df.copy()
+        missing_features = set(self.selected_features) - set(X.columns)
+        if missing_features:
+            raise FeatureEngineeringError(
+                f"Selected features not found in DataFrame: {missing_features}"
+            )
 
-        try:
-            # Create domain features first (most important)
-            if create_domain:
-                df_engineered = self.create_domain_features(df_engineered)
-
-            # Create interaction features
-            if create_interactions:
-                df_engineered = self.create_interaction_features(df_engineered)
-
-            # Create polynomial features (be careful, can explode feature count)
-            if create_polynomials:
-                df_engineered = self.create_polynomial_features(df_engineered, degree=2)
-
-            # Create binned features
-            if create_bins:
-                df_engineered = self.create_binned_features(df_engineered)
-
-            logger.info("Feature engineering pipeline completed")
-            logger.info(f"Original features: {len(df.columns)}")
-            logger.info(f"Engineered features: {len(df_engineered.columns)}")
-
-            return df_engineered
-
-        except Exception as e:
-            raise FeatureEngineeringError(f"Feature engineering pipeline failed: {str(e)}")
+        return X[self.selected_features]

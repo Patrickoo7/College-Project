@@ -1,4 +1,13 @@
-"""API routes for heart disease prediction."""
+"""API routes for heart disease prediction.
+
+This module is fully config-driven:
+- Default model name from config.api.default_model
+- API version from config.api.version
+- File upload limits from config.api.max_file_size_mb
+- Batch row limits from config.api.max_batch_rows
+- Model directory from config.model.model_dir
+- GPU settings from config.model.use_gpu
+"""
 
 import io
 import re
@@ -19,21 +28,21 @@ from .schemas import (
     HealthResponse,
 )
 from ..models.predict import HeartDiseasePredictor
-from ..utils.config import get_config
+from ..config import get_config
 from ..utils.exceptions import ModelPredictionError, ModelLoadError
 from ..utils.logger import get_logger
 
 logger = get_logger(__name__)
 router = APIRouter()
 
-# Load default model
+# Load configuration
 config = get_config()
-default_model_name = "random_forest"  # Can be made configurable
+default_model_name = config.api.default_model
 predictor = None
 
 # Try to load default model
 try:
-    default_model_path = config.get_path("paths.models.artifacts") / f"{default_model_name}.pkl"
+    default_model_path = Path(config.model.model_dir) / f"{default_model_name}.pkl"
     if default_model_path.exists():
         predictor = HeartDiseasePredictor(model_path=default_model_path)
         logger.info(f"Loaded default model: {default_model_name}")
@@ -53,7 +62,7 @@ async def health_check():
 
     return HealthResponse(
         status="healthy",
-        api_version="1.0.0",
+        api_version=config.api.version,
         gpu_available=gpu_available,
         gpu_count=gpu_info.get("device_count", 0)
     )
@@ -204,19 +213,18 @@ async def predict_from_file(file: UploadFile = File(...)):
                 detail="Only CSV files are allowed"
             )
 
-        # Read file contents with size limit
-        MAX_FILE_SIZE = 10 * 1024 * 1024  # 10 MB
+        # Read file contents with size limit (from config)
+        max_file_size_bytes = config.api.max_file_size_mb * 1024 * 1024
         contents = await file.read()
 
-        if len(contents) > MAX_FILE_SIZE:
+        if len(contents) > max_file_size_bytes:
             raise HTTPException(
                 status_code=413,
-                detail=f"File too large. Maximum size is {MAX_FILE_SIZE / 1024 / 1024} MB"
+                detail=f"File too large. Maximum size is {config.api.max_file_size_mb} MB"
             )
 
-        # Read CSV with row limit
-        MAX_ROWS = 10000
-        df = pd.read_csv(io.BytesIO(contents), nrows=MAX_ROWS)
+        # Read CSV with row limit (from config)
+        df = pd.read_csv(io.BytesIO(contents), nrows=config.api.max_batch_rows)
 
         if len(df) == 0:
             raise HTTPException(status_code=400, detail="CSV file is empty")
@@ -252,7 +260,7 @@ async def list_models():
         List of available models with information
     """
     try:
-        models_path = config.get_path("paths.models.artifacts")
+        models_path = Path(config.model.model_dir)
 
         if not models_path.exists():
             return ModelsListResponse(
@@ -310,7 +318,7 @@ async def get_model_info(model_name: str):
         )
 
     try:
-        models_path = config.get_path("paths.models.artifacts")
+        models_path = Path(config.model.model_dir)
         model_file = models_path / f"{model_name}.pkl"
 
         if not model_file.exists():
@@ -361,7 +369,7 @@ async def use_model(model_name: str):
     global predictor, default_model_name
 
     try:
-        models_path = config.get_path("paths.models.artifacts")
+        models_path = Path(config.model.model_dir)
         model_file = models_path / f"{model_name}.pkl"
 
         if not model_file.exists():
@@ -401,5 +409,5 @@ async def get_metrics():
         "total_predictions": "N/A",
         "uptime": "N/A",
         "current_model": default_model_name,
-        "gpu_enabled": config.get("gpu.enabled", True)
+        "gpu_enabled": config.model.use_gpu
     }

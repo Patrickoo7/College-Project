@@ -13,10 +13,12 @@ from .core.interfaces import (
     IDataLoader,
     IDataValidator,
     IDataPreprocessor,
+    IFeatureEngineer,
 )
 from .data.data_loader import DataLoader
 from .data.data_validator import DataValidator
 from .data.data_preprocessor import DataPreprocessor
+from .features.feature_engineering import FeatureEngineer
 from .utils.logger import get_logger
 
 logger = get_logger(__name__)
@@ -69,8 +71,9 @@ def setup_container(environment: Optional[str] = None) -> Container:
     # This allows multiple preprocessing pipelines with different states
     container.register_transient(IDataPreprocessor, DataPreprocessor)
 
-    # TODO: Register feature engineering services
-    # container.register_transient(IFeatureEngineer, FeatureEngineer)
+    # Register feature engineering as transient (new instance per use)
+    # This allows multiple feature engineering pipelines with different states
+    container.register_transient(IFeatureEngineer, FeatureEngineer)
 
     # TODO: Register model services
     # container.register_singleton(
@@ -203,11 +206,12 @@ def initialize_for_training(environment: Optional[str] = None) -> dict:
 
     # Resolve training components
     preprocessor = container.resolve(IDataPreprocessor)
+    feature_engineer = container.resolve(IFeatureEngineer)
 
     app.update({
         "preprocessor": preprocessor,
+        "feature_engineer": feature_engineer,
         # TODO: Add when available
-        # "feature_engineer": container.resolve(IFeatureEngineer),
         # "model_trainer": container.resolve(IModelTrainer),
     })
 
@@ -231,9 +235,11 @@ def initialize_for_inference(environment: Optional[str] = None) -> dict:
 
     # Resolve inference components
     preprocessor = container.resolve(IDataPreprocessor)
+    feature_engineer = container.resolve(IFeatureEngineer)
 
     app.update({
         "preprocessor": preprocessor,
+        "feature_engineer": feature_engineer,
         # TODO: Add when available
         # "predictor": container.resolve(IPredictor),
         # "monitor": container.resolve(IMonitor),
