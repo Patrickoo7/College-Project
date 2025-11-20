@@ -1,6 +1,6 @@
 """Data preprocessing module for cleaning and transforming data."""
 
-from typing import Dict, List, Optional, Tuple
+from typing import Dict, List, Optional, Tuple, Any
 
 import numpy as np
 import pandas as pd
@@ -8,35 +8,215 @@ from sklearn.impute import SimpleImputer, KNNImputer
 from sklearn.model_selection import train_test_split
 from sklearn.preprocessing import StandardScaler, MinMaxScaler, RobustScaler
 
-from ..utils.config import get_config
+from ..config import get_config
+from ..config.schemas import PreprocessingConfig
+from ..core.interfaces import IDataPreprocessor
 from ..utils.exceptions import PreprocessingError
 from ..utils.logger import get_logger
 
 logger = get_logger(__name__)
 
 
-class DataPreprocessor:
-    """Preprocess and clean heart disease data."""
+class DataPreprocessor(IDataPreprocessor):
+    """Preprocess and clean heart disease data.
 
-    def __init__(self):
-        """Initialize DataPreprocessor."""
-        self.config = get_config()
-        self.target_column = self.config.get("features.target", "target")
+    This implementation uses configuration for all preprocessing parameters,
+    including scaling methods, imputation strategies, and outlier detection.
+    """
+
+    def __init__(self, config: Optional[PreprocessingConfig] = None):
+        """Initialize DataPreprocessor.
+
+        Args:
+            config: Preprocessing configuration. If None, loads from global config.
+        """
+        if config is None:
+            app_config = get_config()
+            config = app_config.preprocessing
+
+        self.config = config
         self.scaler = None
         self.imputer = None
+        self._is_fitted = False
+
+        logger.debug(f"DataPreprocessor initialized with scaling_method={config.scaling_method}")
+
+    def fit(self, X: pd.DataFrame, y: Optional[pd.Series] = None) -> "DataPreprocessor":
+        """Fit the preprocessor on training data.
+
+        Args:
+            X: Features DataFrame
+            y: Optional target Series (not used, kept for interface compatibility)
+
+        Returns:
+            self
+
+        Raises:
+            PreprocessingError: If fitting fails
+        """
+        logger.info(f"Fitting preprocessor on {len(X)} samples")
+
+        try:
+            # Fit imputer if needed
+            if self.config.imputation_strategy != "none":
+                self._fit_imputer(X)
+
+            # Fit scaler
+            if self.config.scaling_method != "none":
+                self._fit_scaler(X)
+
+            self._is_fitted = True
+            logger.info("Preprocessor fitted successfully")
+
+            return self
+
+        except Exception as e:
+            raise PreprocessingError(f"Failed to fit preprocessor: {str(e)}")
+
+    def transform(self, X: pd.DataFrame) -> pd.DataFrame:
+        """Transform data using fitted preprocessor.
+
+        Args:
+            X: Features DataFrame to transform
+
+        Returns:
+            Transformed DataFrame
+
+        Raises:
+            PreprocessingError: If transformation fails or preprocessor not fitted
+        """
+        if not self._is_fitted:
+            raise PreprocessingError("Preprocessor must be fitted before transform")
+
+        logger.info(f"Transforming {len(X)} samples")
+
+        try:
+            X_transformed = X.copy()
+
+            # Apply imputation
+            if self.imputer is not None:
+                X_transformed = self._apply_imputation(X_transformed)
+
+            # Apply scaling
+            if self.scaler is not None:
+                X_transformed = self._apply_scaling(X_transformed)
+
+            logger.info("Transformation completed")
+            return X_transformed
+
+        except Exception as e:
+            raise PreprocessingError(f"Failed to transform data: {str(e)}")
+
+    def fit_transform(self, X: pd.DataFrame, y: Optional[pd.Series] = None) -> pd.DataFrame:
+        """Fit and transform in one step.
+
+        Args:
+            X: Features DataFrame
+            y: Optional target Series
+
+        Returns:
+            Transformed DataFrame
+        """
+        return self.fit(X, y).transform(X)
+
+    def _fit_imputer(self, X: pd.DataFrame) -> None:
+        """Fit imputer on data.
+
+        Args:
+            X: Features DataFrame
+        """
+        strategy = self.config.imputation_strategy
+
+        if strategy == "mean":
+            self.imputer = SimpleImputer(strategy="mean")
+        elif strategy == "median":
+            self.imputer = SimpleImputer(strategy="median")
+        elif strategy == "mode":
+            self.imputer = SimpleImputer(strategy="most_frequent")
+        elif strategy == "knn":
+            self.imputer = KNNImputer(n_neighbors=self.config.knn_neighbors)
+        else:
+            raise PreprocessingError(f"Unknown imputation strategy: {strategy}")
+
+        # Fit on numeric columns only
+        numeric_cols = X.select_dtypes(include=[np.number]).columns
+        if len(numeric_cols) > 0:
+            self.imputer.fit(X[numeric_cols])
+            logger.debug(f"Imputer fitted with strategy={strategy}")
+
+    def _apply_imputation(self, X: pd.DataFrame) -> pd.DataFrame:
+        """Apply fitted imputer to data.
+
+        Args:
+            X: Features DataFrame
+
+        Returns:
+            Imputed DataFrame
+        """
+        numeric_cols = X.select_dtypes(include=[np.number]).columns
+
+        if len(numeric_cols) == 0:
+            return X
+
+        X_imputed = X.copy()
+        X_imputed[numeric_cols] = self.imputer.transform(X[numeric_cols])
+
+        return X_imputed
+
+    def _fit_scaler(self, X: pd.DataFrame) -> None:
+        """Fit scaler on data.
+
+        Args:
+            X: Features DataFrame
+        """
+        method = self.config.scaling_method
+
+        if method == "standard":
+            self.scaler = StandardScaler()
+        elif method == "minmax":
+            self.scaler = MinMaxScaler()
+        elif method == "robust":
+            self.scaler = RobustScaler()
+        else:
+            raise PreprocessingError(f"Unknown scaling method: {method}")
+
+        # Fit on numeric columns only
+        numeric_cols = X.select_dtypes(include=[np.number]).columns
+        if len(numeric_cols) > 0:
+            self.scaler.fit(X[numeric_cols])
+            logger.debug(f"Scaler fitted with method={method}")
+
+    def _apply_scaling(self, X: pd.DataFrame) -> pd.DataFrame:
+        """Apply fitted scaler to data.
+
+        Args:
+            X: Features DataFrame
+
+        Returns:
+            Scaled DataFrame
+        """
+        numeric_cols = X.select_dtypes(include=[np.number]).columns
+
+        if len(numeric_cols) == 0:
+            return X
+
+        X_scaled = X.copy()
+        X_scaled[numeric_cols] = self.scaler.transform(X[numeric_cols])
+
+        return X_scaled
+
+    # Additional helper methods for complete preprocessing pipeline
 
     def handle_missing_values(
         self,
         df: pd.DataFrame,
         strategy: Optional[str] = None
     ) -> pd.DataFrame:
-        """
-        Handle missing values in the dataset.
+        """Handle missing values in the dataset.
 
         Args:
             df: Input DataFrame
-            strategy: Imputation strategy ('drop', 'mean', 'median', 'mode', 'knn')
-                     If None, uses config default
+            strategy: Imputation strategy. If None, uses config default
 
         Returns:
             DataFrame with missing values handled
@@ -45,63 +225,51 @@ class DataPreprocessor:
             PreprocessingError: If handling fails
         """
         if strategy is None:
-            strategy = self.config.get("preprocessing.handle_missing", "drop")
+            strategy = self.config.imputation_strategy
 
         logger.info(f"Handling missing values with strategy: {strategy}")
 
         # Log missing values before handling
         missing_before = df.isnull().sum()
         if missing_before.sum() > 0:
-            logger.info(f"Missing values before handling:\n{missing_before[missing_before > 0]}")
+            logger.info(f"Missing values before: {missing_before[missing_before > 0].to_dict()}")
         else:
             logger.info("No missing values found")
             return df.copy()
 
         try:
-            if strategy == "drop":
-                df_clean = df.dropna()
-                logger.info(f"Dropped {len(df) - len(df_clean)} rows with missing values")
-
-            elif strategy == "mean":
+            if strategy == "mean":
                 numeric_cols = df.select_dtypes(include=[np.number]).columns
-                self.imputer = SimpleImputer(strategy="mean")
+                imputer = SimpleImputer(strategy="mean")
                 df_clean = df.copy()
-                df_clean[numeric_cols] = self.imputer.fit_transform(df[numeric_cols])
-                logger.info("Imputed missing values with mean")
+                df_clean[numeric_cols] = imputer.fit_transform(df[numeric_cols])
 
             elif strategy == "median":
                 numeric_cols = df.select_dtypes(include=[np.number]).columns
-                self.imputer = SimpleImputer(strategy="median")
+                imputer = SimpleImputer(strategy="median")
                 df_clean = df.copy()
-                df_clean[numeric_cols] = self.imputer.fit_transform(df[numeric_cols])
-                logger.info("Imputed missing values with median")
+                df_clean[numeric_cols] = imputer.fit_transform(df[numeric_cols])
 
             elif strategy == "mode":
-                self.imputer = SimpleImputer(strategy="most_frequent")
+                imputer = SimpleImputer(strategy="most_frequent")
                 df_clean = pd.DataFrame(
-                    self.imputer.fit_transform(df),
+                    imputer.fit_transform(df),
                     columns=df.columns,
                     index=df.index
                 )
-                logger.info("Imputed missing values with mode")
 
             elif strategy == "knn":
-                self.imputer = KNNImputer(n_neighbors=5)
+                imputer = KNNImputer(n_neighbors=self.config.knn_neighbors)
                 df_clean = pd.DataFrame(
-                    self.imputer.fit_transform(df),
+                    imputer.fit_transform(df),
                     columns=df.columns,
                     index=df.index
                 )
-                logger.info("Imputed missing values with KNN")
 
             else:
                 raise PreprocessingError(f"Unknown imputation strategy: {strategy}")
 
-            # Log missing values after handling
-            missing_after = df_clean.isnull().sum()
-            if missing_after.sum() > 0:
-                logger.warning(f"Missing values remaining:\n{missing_after[missing_after > 0]}")
-
+            logger.info("Missing values handled successfully")
             return df_clean
 
         except Exception as e:
@@ -111,59 +279,54 @@ class DataPreprocessor:
         self,
         df: pd.DataFrame,
         method: Optional[str] = None,
-        threshold: float = 3.0
+        threshold: Optional[float] = None
     ) -> pd.DataFrame:
-        """
-        Remove outliers from continuous features.
+        """Remove outliers from continuous features.
 
         Args:
             df: Input DataFrame
-            method: Outlier detection method ('iqr', 'zscore')
-                   If None, uses config default
-            threshold: Threshold for outlier detection
+            method: Outlier detection method. If None, uses config default
+            threshold: Threshold for outlier detection. If None, uses config default
 
         Returns:
             DataFrame with outliers removed
         """
         if method is None:
-            method = self.config.get("preprocessing.outlier_method", "iqr")
+            method = self.config.outlier_detection_method
 
-        continuous_features = self.config.get("features.continuous", [])
-        continuous_features = [f for f in continuous_features if f in df.columns]
+        if threshold is None:
+            threshold = self.config.zscore_threshold if method == "zscore" else self.config.iqr_multiplier
 
-        if not continuous_features:
-            logger.info("No continuous features to check for outliers")
-            return df.copy()
-
-        logger.info(f"Removing outliers using {method} method")
+        logger.info(f"Removing outliers using {method} method (threshold={threshold})")
 
         df_clean = df.copy()
+        numeric_cols = df.select_dtypes(include=[np.number]).columns.tolist()
 
         try:
             if method == "iqr":
-                for col in continuous_features:
+                for col in numeric_cols:
                     Q1 = df_clean[col].quantile(0.25)
                     Q3 = df_clean[col].quantile(0.75)
                     IQR = Q3 - Q1
-                    lower_bound = Q1 - 1.5 * IQR
-                    upper_bound = Q3 + 1.5 * IQR
+                    lower_bound = Q1 - threshold * IQR
+                    upper_bound = Q3 + threshold * IQR
 
                     outliers_mask = (df_clean[col] < lower_bound) | (df_clean[col] > upper_bound)
                     n_outliers = outliers_mask.sum()
 
                     if n_outliers > 0:
-                        logger.info(f"Found {n_outliers} outliers in '{col}'")
+                        logger.debug(f"Found {n_outliers} outliers in '{col}'")
 
                     df_clean = df_clean[~outliers_mask]
 
             elif method == "zscore":
-                for col in continuous_features:
+                for col in numeric_cols:
                     z_scores = np.abs((df_clean[col] - df_clean[col].mean()) / df_clean[col].std())
                     outliers_mask = z_scores > threshold
                     n_outliers = outliers_mask.sum()
 
                     if n_outliers > 0:
-                        logger.info(f"Found {n_outliers} outliers in '{col}'")
+                        logger.debug(f"Found {n_outliers} outliers in '{col}'")
 
                     df_clean = df_clean[~outliers_mask]
 
@@ -176,104 +339,17 @@ class DataPreprocessor:
         except Exception as e:
             raise PreprocessingError(f"Failed to remove outliers: {str(e)}")
 
-    def drop_features(
-        self,
-        df: pd.DataFrame,
-        features_to_drop: Optional[List[str]] = None
-    ) -> pd.DataFrame:
-        """
-        Drop specified features from DataFrame.
-
-        Args:
-            df: Input DataFrame
-            features_to_drop: List of features to drop
-                             If None, uses config default
-
-        Returns:
-            DataFrame with features dropped
-        """
-        if features_to_drop is None:
-            features_to_drop = self.config.get("features.drop_features", [])
-
-        if not features_to_drop:
-            return df.copy()
-
-        existing_features = [f for f in features_to_drop if f in df.columns]
-
-        if existing_features:
-            logger.info(f"Dropping features: {existing_features}")
-            df_clean = df.drop(columns=existing_features)
-        else:
-            logger.info("No features to drop")
-            df_clean = df.copy()
-
-        return df_clean
-
-    def encode_categorical_features(
-        self,
-        df: pd.DataFrame,
-        method: str = "onehot"
-    ) -> pd.DataFrame:
-        """
-        Encode categorical features.
-
-        Args:
-            df: Input DataFrame
-            method: Encoding method ('onehot', 'label')
-
-        Returns:
-            DataFrame with encoded categorical features
-        """
-        categorical_features = self.config.get("features.categorical", [])
-        categorical_features = [f for f in categorical_features if f in df.columns]
-
-        # Remove target from categorical features
-        if self.target_column in categorical_features:
-            categorical_features.remove(self.target_column)
-
-        if not categorical_features:
-            logger.info("No categorical features to encode")
-            return df.copy()
-
-        logger.info(f"Encoding categorical features: {categorical_features}")
-
-        try:
-            if method == "onehot":
-                df_encoded = pd.get_dummies(
-                    df,
-                    columns=categorical_features,
-                    drop_first=True,
-                    dtype=int
-                )
-                logger.info(f"One-hot encoded {len(categorical_features)} features")
-
-            elif method == "label":
-                df_encoded = df.copy()
-                for col in categorical_features:
-                    df_encoded[col] = pd.factorize(df[col])[0]
-                logger.info(f"Label encoded {len(categorical_features)} features")
-
-            else:
-                raise PreprocessingError(f"Unknown encoding method: {method}")
-
-            return df_encoded
-
-        except Exception as e:
-            raise PreprocessingError(f"Failed to encode categorical features: {str(e)}")
-
     def scale_features(
         self,
         X: np.ndarray,
         method: Optional[str] = None,
         fit: bool = True
     ) -> np.ndarray:
-        """
-        Scale numerical features.
+        """Scale numerical features.
 
         Args:
             X: Feature matrix
-            method: Scaling method ('standard', 'minmax', 'robust')
-                   If None, uses config default
+            method: Scaling method. If None, uses config default
             fit: If True, fit scaler. If False, use existing scaler
 
         Returns:
@@ -283,7 +359,7 @@ class DataPreprocessor:
             PreprocessingError: If scaling fails
         """
         if method is None:
-            method = self.config.get("preprocessing.scaling_method", "standard")
+            method = self.config.scaling_method
 
         logger.info(f"Scaling features using {method} method")
 
@@ -295,128 +371,59 @@ class DataPreprocessor:
                     self.scaler = MinMaxScaler()
                 elif method == "robust":
                     self.scaler = RobustScaler()
+                elif method == "none":
+                    return X  # No scaling
                 else:
                     raise PreprocessingError(f"Unknown scaling method: {method}")
 
                 X_scaled = self.scaler.fit_transform(X)
-                logger.info("Fitted and transformed features")
+                logger.debug("Fitted and transformed features")
             else:
                 X_scaled = self.scaler.transform(X)
-                logger.info("Transformed features using existing scaler")
+                logger.debug("Transformed features using existing scaler")
 
             return X_scaled
 
         except Exception as e:
             raise PreprocessingError(f"Failed to scale features: {str(e)}")
 
-    def split_data(
-        self,
-        df: pd.DataFrame,
-        test_size: Optional[float] = None,
-        random_state: Optional[int] = None,
-        stratify: Optional[bool] = None
-    ) -> Tuple[pd.DataFrame, pd.DataFrame, pd.Series, pd.Series]:
-        """
-        Split data into train and test sets.
-
-        Args:
-            df: Input DataFrame
-            test_size: Test set size (0-1). If None, uses config default
-            random_state: Random seed. If None, uses config default
-            stratify: Whether to stratify split. If None, uses config default
+    def get_scaler(self):
+        """Get the fitted scaler.
 
         Returns:
-            Tuple of (X_train, X_test, y_train, y_test)
+            Fitted scaler object
 
         Raises:
-            PreprocessingError: If splitting fails
+            PreprocessingError: If scaler not fitted
         """
-        if test_size is None:
-            test_size = self.config.get("preprocessing.test_size", 0.25)
+        if self.scaler is None:
+            raise PreprocessingError("Scaler not fitted. Call fit() first.")
+        return self.scaler
 
-        if random_state is None:
-            random_state = self.config.get("preprocessing.random_state", 42)
-
-        if stratify is None:
-            stratify = self.config.get("preprocessing.stratify", True)
-
-        logger.info(f"Splitting data: test_size={test_size}, random_state={random_state}")
-
-        try:
-            if self.target_column not in df.columns:
-                raise PreprocessingError(f"Target column '{self.target_column}' not found")
-
-            X = df.drop(columns=[self.target_column])
-            y = df[self.target_column]
-
-            stratify_arg = y if stratify else None
-
-            X_train, X_test, y_train, y_test = train_test_split(
-                X, y,
-                test_size=test_size,
-                random_state=random_state,
-                stratify=stratify_arg
-            )
-
-            logger.info(f"Train set: {len(X_train)} samples")
-            logger.info(f"Test set: {len(X_test)} samples")
-
-            return X_train, X_test, y_train, y_test
-
-        except Exception as e:
-            raise PreprocessingError(f"Failed to split data: {str(e)}")
-
-    def preprocess_pipeline(
-        self,
-        df: pd.DataFrame,
-        handle_missing: bool = True,
-        remove_outliers: bool = False,
-        drop_features: bool = True,
-        encode_categorical: bool = True
-    ) -> pd.DataFrame:
-        """
-        Run complete preprocessing pipeline.
-
-        Args:
-            df: Input DataFrame
-            handle_missing: Whether to handle missing values
-            remove_outliers: Whether to remove outliers
-            drop_features: Whether to drop configured features
-            encode_categorical: Whether to encode categorical features
+    def get_imputer(self):
+        """Get the fitted imputer.
 
         Returns:
-            Preprocessed DataFrame
+            Fitted imputer object
 
         Raises:
-            PreprocessingError: If preprocessing fails
+            PreprocessingError: If imputer not fitted
         """
-        logger.info("Starting preprocessing pipeline")
+        if self.imputer is None:
+            raise PreprocessingError("Imputer not fitted. Call fit() first.")
+        return self.imputer
 
-        df_processed = df.copy()
+    def is_fitted(self) -> bool:
+        """Check if preprocessor is fitted.
 
-        try:
-            # 1. Drop unwanted features
-            if drop_features:
-                df_processed = self.drop_features(df_processed)
+        Returns:
+            True if fitted, False otherwise
+        """
+        return self._is_fitted
 
-            # 2. Handle missing values
-            if handle_missing:
-                df_processed = self.handle_missing_values(df_processed)
-
-            # 3. Remove outliers
-            if remove_outliers:
-                outliers_enabled = self.config.get("preprocessing.handle_outliers", False)
-                if outliers_enabled:
-                    df_processed = self.remove_outliers(df_processed)
-
-            # 4. Encode categorical features
-            if encode_categorical:
-                df_processed = self.encode_categorical_features(df_processed)
-
-            logger.info("Preprocessing pipeline completed")
-            logger.info(f"Final shape: {df_processed.shape}")
-
-            return df_processed
-
-        except Exception as e:
-            raise PreprocessingError(f"Preprocessing pipeline failed: {str(e)}")
+    def reset(self) -> None:
+        """Reset the preprocessor to unfitted state."""
+        self.scaler = None
+        self.imputer = None
+        self._is_fitted = False
+        logger.info("Preprocessor reset to unfitted state")
