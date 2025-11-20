@@ -1,0 +1,342 @@
+# Main Application Configuration
+# This is the base configuration that applies to all environments
+# Environment-specific overrides are in dev_config.yaml, staging_config.yaml, prod_config.yaml
+
+# Environment (will be overridden by environment-specific configs)
+environment: "development"
+debug: false
+
+# API Configuration
+api:
+  host: "0.0.0.0"
+  port: 8000
+  title: "Heart Disease Prediction API"
+  version: "1.0.0"
+  description: "ML-powered heart disease prediction service with MLOps capabilities"
+  prefix: "/api/v1"
+
+  # CORS Settings
+  cors:
+    allowed_origins:
+      - "http://localhost:3000"
+      - "http://localhost:8000"
+      - "http://127.0.0.1:3000"
+      - "http://127.0.0.1:8000"
+    allow_credentials: true
+    allow_methods: ["*"]
+    allow_headers: ["*"]
+
+  # File Upload Limits
+  max_file_size_mb: 10
+  max_batch_rows: 10000
+
+  # Model Settings
+  default_model: "random_forest"
+
+  # Security
+  enable_auth: false
+  secret_key: null
+  access_token_expire_minutes: 30
+
+# Data Configuration
+data:
+  raw_data_dir: "data/raw"
+  processed_data_dir: "data/processed"
+  interim_data_dir: "data/interim"
+
+  datasets:
+    - cleveland
+    - hungarian
+    - switzerland
+    - va
+
+  test_size: 0.25
+  validation_size: 0.15
+  stratify: true
+  binary_classification: true
+
+# Preprocessing Configuration
+preprocessing:
+  scaling_method: "standard"  # standard, minmax, robust, none
+  imputation_strategy: "knn"  # mean, median, mode, knn, iterative
+  knn_neighbors: 5
+  zscore_threshold: 3.0
+  iqr_multiplier: 1.5
+  outlier_detection_method: "iqr"  # zscore, iqr, isolation_forest
+  random_state: 42
+
+# Validation Rules
+validation:
+  # Feature value ranges
+  ranges:
+    age:
+      min: 0
+      max: 120
+    sex:
+      min: 0
+      max: 1
+    cp:
+      min: 0
+      max: 4
+    trestbps:
+      min: 50
+      max: 250
+    chol:
+      min: 100
+      max: 600
+    fbs:
+      min: 0
+      max: 1
+    restecg:
+      min: 0
+      max: 2
+    thalach:
+      min: 50
+      max: 250
+    exang:
+      min: 0
+      max: 1
+    oldpeak:
+      min: 0
+      max: 10
+    slope:
+      min: 0
+      max: 3
+    ca:
+      min: 0
+      max: 4
+    thal:
+      min: 0
+      max: 7
+    target:
+      min: 0
+      max: 4
+
+  # Validation thresholds
+  missing_threshold: 0.5
+  min_class_percentage: 0.1
+
+  # Required features
+  required_features:
+    - age
+    - sex
+    - cp
+    - trestbps
+    - chol
+    - fbs
+    - restecg
+    - thalach
+    - exang
+    - oldpeak
+    - slope
+    - ca
+    - thal
+
+  target_column: "target"
+
+# Feature Engineering Configuration
+feature_engineering:
+  polynomial_degree: 2
+  include_polynomial: false
+
+  # Feature interaction pairs
+  interaction_pairs:
+    - ["age", "chol"]
+    - ["age", "thalach"]
+    - ["trestbps", "chol"]
+    - ["exang", "oldpeak"]
+    - ["cp", "thalach"]
+
+  # Binning configurations
+  age_bins: [0, 40, 50, 60, 70, 120]
+  chol_bins: [0, 200, 240, 280, 600]
+  bp_bins: [0, 120, 140, 180, 300]
+
+  # Domain-specific rules
+  domain_rules:
+    age_risk_threshold: 55
+    high_chol_threshold: 240
+    high_bp_threshold: 140
+    max_hr_formula: "220-age"
+    low_hr_percentage_threshold: 0.8
+
+  # Feature selection
+  k_best_features: 10
+  feature_selection_method: "mutual_info"  # mutual_info, f_classif, chi2
+
+# Hyperparameter Tuning Configuration
+hyperparameters:
+  # General settings
+  default_trials: 100
+  cv_folds: 5
+  startup_trials: 10
+  warmup_steps: 5
+
+  # Random Forest search space
+  random_forest:
+    n_estimators:
+      low: 50
+      high: 500
+      step: 50
+    max_depth:
+      low: 3
+      high: 30
+    min_samples_split:
+      low: 2
+      high: 20
+    min_samples_leaf:
+      low: 1
+      high: 10
+
+  # Gradient Boosting search space
+  gradient_boosting:
+    n_estimators:
+      low: 50
+      high: 300
+      step: 50
+    learning_rate:
+      low: 0.01
+      high: 0.3
+      log: true
+    max_depth:
+      low: 3
+      high: 15
+    subsample:
+      low: 0.6
+      high: 1.0
+
+  # Logistic Regression search space
+  logistic_regression:
+    C:
+      low: 0.001
+      high: 100
+      log: true
+    penalty:
+      choices: ["l1", "l2", "elasticnet"]
+    solver:
+      choices: ["liblinear", "saga"]
+    max_iter:
+      value: 1000
+
+  # SVM search space
+  svm:
+    C:
+      low: 0.1
+      high: 100
+      log: true
+    kernel:
+      choices: ["linear", "rbf", "poly"]
+    gamma:
+      choices: ["scale", "auto"]
+
+  # KNN search space
+  knn:
+    n_neighbors:
+      low: 3
+      high: 50
+    weights:
+      choices: ["uniform", "distance"]
+    metric:
+      choices: ["euclidean", "manhattan", "minkowski"]
+
+  # Decision Tree search space
+  decision_tree:
+    max_depth:
+      low: 3
+      high: 30
+    min_samples_split:
+      low: 2
+      high: 20
+    min_samples_leaf:
+      low: 1
+      high: 10
+    criterion:
+      choices: ["gini", "entropy"]
+
+# Model Configuration
+model:
+  models_to_train:
+    - logistic_regression
+    - random_forest
+    - gradient_boosting
+    - svm
+    - knn
+    - decision_tree
+
+  use_gpu: false
+  device_id: 0
+  n_jobs: -1
+
+  cv_folds: 5
+  cv_metrics:
+    - accuracy
+    - precision
+    - recall
+    - f1
+    - roc_auc
+
+  ensemble:
+    stacking_cv: 5
+    voting_weights: null
+
+  model_dir: "models"
+  backup_dir: "models/backups"
+
+# MLOps Configuration
+mlops:
+  # Drift Detection
+  drift_detection:
+    significance_level: 0.05
+    psi_threshold: 0.2
+    psi_bins: 10
+    epsilon: 0.0000000001
+    max_reports: 100
+
+  # Monitoring
+  monitoring:
+    accuracy_drop_threshold: 0.05
+    drift_score_threshold: 0.3
+    error_rate_threshold: 0.2
+    prediction_latency_ms: 1000
+    distribution_thresholds:
+      disease_rate_high: 0.9
+      disease_rate_low: 0.1
+    max_alerts_history: 1000
+
+  # Retraining
+  retraining:
+    performance_threshold: 0.05
+    min_samples_required: 100
+    interval_days: 30
+    promotion_tolerance: 0.01
+    cron_schedule: "0 2 * * 0"  # Sunday at 2 AM
+
+  # Database
+  max_query_limit: 10000
+
+# Visualization Configuration
+visualization:
+  figure_size: [8, 6]
+  dpi: 300
+  cm_colormap: "Blues"
+  roc_color: "darkorange"
+  baseline_color: "navy"
+  class_labels:
+    - "No Disease"
+    - "Disease"
+  show_plots: false
+  save_plots: true
+  plots_dir: "reports/figures"
+
+# Logging Configuration
+logging:
+  level: "INFO"
+  log_dir: "logs"
+  log_file: "app.log"
+  max_bytes: 10485760  # 10 MB
+  backup_count: 5
+  format: "%(asctime)s - %(name)s - %(levelname)s - %(message)s"
+
+# MLflow Configuration
+mlflow_tracking_uri: "http://localhost:5000"
+mlflow_experiment_name: "heart_disease_prediction"

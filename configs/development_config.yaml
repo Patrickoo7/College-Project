@@ -1,0 +1,51 @@
+# Development Environment Configuration
+# These settings override app_config.yaml for development
+
+environment: "development"
+debug: true
+
+api:
+  host: "127.0.0.1"
+  port: 8000
+  cors:
+    allowed_origins:
+      - "*"  # Allow all origins in development
+
+  # Disable authentication in development
+  enable_auth: false
+
+# Development data paths
+data:
+  raw_data_dir: "data/raw"
+  processed_data_dir: "data/processed"
+
+# Faster hyperparameter tuning for development
+hyperparameters:
+  default_trials: 20  # Reduced from 100 for faster iteration
+  cv_folds: 3  # Reduced from 5
+
+# Model configuration for development
+model:
+  cv_folds: 3  # Reduced for faster training
+  use_gpu: false
+
+# MLOps settings for development
+mlops:
+  drift_detection:
+    max_reports: 50  # Reduced storage for dev
+  monitoring:
+    max_alerts_history: 100  # Reduced storage for dev
+
+# Visualization
+visualization:
+  show_plots: true  # Show plots in development
+  dpi: 150  # Lower DPI for faster rendering
+
+# Logging
+logging:
+  level: "DEBUG"
+  log_file: "app_dev.log"
+
+# MLflow
+mlflow_tracking_uri: "http://localhost:5000"
+mlflow_experiment_name: "heart_disease_dev"

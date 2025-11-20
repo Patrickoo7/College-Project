@@ -1,0 +1,110 @@
+# Main Configuration File for Heart Disease Prediction System
+
+project:
+  name: "heart-disease-prediction"
+  version: "1.0.0"
+  description: "End-to-end ML system for predicting heart disease"
+  author: "College Project - Group 1"
+
+paths:
+  data:
+    raw: "data/raw"
+    processed: "data/processed"
+    external: "data/external"
+  models:
+    artifacts: "models/artifacts"
+    scaler: "models/scaler"
+    metadata: "models/metadata"
+  logs: "logs"
+  mlflow: "mlruns"
+
+datasets:
+  cleveland: "cleveland.csv"
+  hungarian: "hungarian.csv"
+  switzerland: "switzerland.csv"
+  va: "va.csv"
+  heart: "heart.csv"
+  framingham: "framingham.csv"
+  combined: "heart_statlog_cleveland_hungary_final.csv"
+
+features:
+  target: "target"
+  categorical:
+    - sex
+    - cp
+    - fbs
+    - restecg
+    - exang
+    - slope
+    - ca
+    - thal
+  continuous:
+    - age
+    - trestbps
+    - chol
+    - thalach
+    - oldpeak
+
+  # Features to drop (high missing values or low importance)
+  drop_features:
+    - slope
+    - ca
+    - thal
+    - fbs
+
+preprocessing:
+  test_size: 0.25
+  random_state: 42
+  stratify: true
+  scaling_method: "standard"  # standard, minmax, robust
+  handle_missing: "drop"  # drop, mean, median, mode, knn
+  handle_outliers: false
+  outlier_method: "iqr"  # iqr, zscore, isolation_forest
+
+training:
+  cv_folds: 5
+  cv_strategy: "stratified"  # stratified, kfold, timeseries
+  n_jobs: -1
+  verbose: 1
+
+gpu:
+  enabled: true  # Auto-detect and use GPU if available
+  prefer_gpu: true  # Prefer GPU over CPU when available
+  device_id: 0  # GPU device ID to use (for multi-GPU systems)
+  memory_limit_mb: null  # Memory limit in MB (null = use all available)
+  fallback_to_cpu: true  # Fallback to CPU if GPU fails
+
+evaluation:
+  metrics:
+    - accuracy
+    - precision
+    - recall
+    - f1
+    - roc_auc
+    - pr_auc
+  threshold: 0.5
+
+mlflow:
+  experiment_name: "heart-disease-prediction"
+  tracking_uri: "mlruns"
+  artifact_location: "models/artifacts"
+
+logging:
+  level: "INFO"  # DEBUG, INFO, WARNING, ERROR, CRITICAL
+  format: "%(asctime)s - %(name)s - %(levelname)s - %(message)s"
+  file: "logs/app.log"
+  max_bytes: 10485760  # 10MB
+  backup_count: 5
+
+# Automated retraining configuration
+retraining:
+  performance_threshold: 0.05  # 5% accuracy drop triggers retraining
+  min_samples_required: 100  # Minimum samples needed for retraining
+  interval_days: 30  # Retrain if model is older than this many days
+
+# Monitoring and alerting configuration
+monitoring:
+  accuracy_drop_threshold: 0.05  # Alert if accuracy drops by 5%
+  drift_score_threshold: 0.3  # Alert if drift score > 0.3
+  error_rate_threshold: 0.2  # Alert if error rate > 20%
+  prediction_latency_ms: 1000  # Alert if latency > 1 second

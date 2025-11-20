@@ -1,0 +1,58 @@
+# Staging Environment Configuration
+# These settings override app_config.yaml for staging
+
+environment: "staging"
+debug: false
+
+api:
+  host: "0.0.0.0"
+  port: 8000
+  cors:
+    allowed_origins:
+      - "https://staging.example.com"
+      - "https://staging-api.example.com"
+
+  # Enable authentication in staging
+  enable_auth: true
+  # Set secret_key via environment variable: APP_API__SECRET_KEY
+
+# Staging data paths (could be on cloud storage)
+data:
+  raw_data_dir: "data/staging/raw"
+  processed_data_dir: "data/staging/processed"
+
+# Moderate hyperparameter tuning for staging
+hyperparameters:
+  default_trials: 50
+  cv_folds: 5
+
+# Model configuration for staging
+model:
+  cv_folds: 5
+  use_gpu: true
+  device_id: 0
+
+# MLOps settings for staging
+mlops:
+  drift_detection:
+    max_reports: 200
+  monitoring:
+    max_alerts_history: 2000
+    accuracy_drop_threshold: 0.05
+
+# Visualization
+visualization:
+  show_plots: false
+  save_plots: true
+  dpi: 300
+
+# Logging
+logging:
+  level: "INFO"
+  log_file: "app_staging.log"
+  max_bytes: 52428800  # 50 MB for staging
+  backup_count: 10
+
+# MLflow (could be remote server)
+mlflow_tracking_uri: "http://mlflow-staging:5000"
+mlflow_experiment_name: "heart_disease_staging"

@@ -1,0 +1,169 @@
+# Model Configuration - Hyperparameters for all ML models
+
+models:
+  logistic_regression:
+    name: "Logistic Regression"
+    enabled: true
+    params:
+      solver: "liblinear"
+      max_iter: 1000
+      random_state: 42
+      class_weight: null
+    hyperparameter_search:
+      C: [0.001, 0.01, 0.1, 1, 10, 100]
+      penalty: ["l1", "l2"]
+      solver: ["liblinear"]
+
+  random_forest:
+    name: "Random Forest"
+    enabled: true
+    params:
+      n_estimators: 400
+      max_depth: null
+      min_samples_split: 2
+      min_samples_leaf: 1
+      random_state: 42
+      n_jobs: -1
+      class_weight: null
+    hyperparameter_search:
+      n_estimators: [100, 200, 400, 600]
+      max_depth: [5, 10, 15, 20, null]
+      min_samples_split: [2, 5, 10]
+      min_samples_leaf: [1, 2, 4]
+      max_features: ["sqrt", "log2"]
+
+  knn:
+    name: "K-Nearest Neighbors"
+    enabled: true
+    params:
+      n_neighbors: 5
+      weights: "uniform"
+      algorithm: "auto"
+      metric: "minkowski"
+      n_jobs: -1
+    hyperparameter_search:
+      n_neighbors: [3, 5, 7, 9, 11, 15, 20, 27]
+      weights: ["uniform", "distance"]
+      metric: ["euclidean", "manhattan", "minkowski"]
+
+  svm:
+    name: "Support Vector Machine"
+    enabled: true
+    params:
+      kernel: "rbf"
+      C: 1.0
+      gamma: 0.1
+      random_state: 42
+      probability: true
+      class_weight: null
+    hyperparameter_search:
+      C: [0.1, 1, 10, 100]
+      gamma: [0.001, 0.01, 0.1, 1, "scale", "auto"]
+      kernel: ["rbf", "linear", "poly"]
+
+  decision_tree:
+    name: "Decision Tree"
+    enabled: true
+    params:
+      max_depth: null
+      min_samples_split: 2
+      min_samples_leaf: 1
+      random_state: 42
+      class_weight: null
+    hyperparameter_search:
+      max_depth: [3, 5, 7, 10, 15, null]
+      min_samples_split: [2, 5, 10, 20]
+      min_samples_leaf: [1, 2, 4, 8]
+      criterion: ["gini", "entropy"]
+
+  xgboost:
+    name: "XGBoost"
+    enabled: true
+    params:
+      n_estimators: 200
+      max_depth: 6
+      learning_rate: 0.1
+      subsample: 0.8
+      colsample_bytree: 0.8
+      random_state: 42
+      n_jobs: -1
+      eval_metric: "logloss"
+      # GPU params (auto-configured by GPU manager)
+      tree_method: "hist"  # Will be set to 'gpu_hist' if GPU available
+      # predictor: "auto"  # Will be set to 'gpu_predictor' if GPU available
+    hyperparameter_search:
+      n_estimators: [100, 200, 300, 500]
+      max_depth: [3, 5, 7, 9]
+      learning_rate: [0.01, 0.05, 0.1, 0.2]
+      subsample: [0.6, 0.8, 1.0]
+      colsample_bytree: [0.6, 0.8, 1.0]
+
+  lightgbm:
+    name: "LightGBM"
+    enabled: true
+    params:
+      n_estimators: 200
+      max_depth: 6
+      learning_rate: 0.1
+      num_leaves: 31
+      subsample: 0.8
+      colsample_bytree: 0.8
+      random_state: 42
+      n_jobs: -1
+      verbose: -1
+      # GPU params (auto-configured by GPU manager)
+      device: "cpu"  # Will be set to 'gpu' if GPU available
+    hyperparameter_search:
+      n_estimators: [100, 200, 300, 500]
+      max_depth: [3, 5, 7, 9]
+      learning_rate: [0.01, 0.05, 0.1, 0.2]
+      num_leaves: [15, 31, 63, 127]
+      subsample: [0.6, 0.8, 1.0]
+
+  catboost:
+    name: "CatBoost"
+    enabled: true
+    params:
+      iterations: 200
+      depth: 6
+      learning_rate: 0.1
+      random_state: 42
+      verbose: 0
+      eval_metric: "Logloss"
+      # GPU params (auto-configured by GPU manager)
+      task_type: "CPU"  # Will be set to 'GPU' if GPU available
+    hyperparameter_search:
+      iterations: [100, 200, 300, 500]
+      depth: [4, 6, 8, 10]
+      learning_rate: [0.01, 0.05, 0.1, 0.2]
+      l2_leaf_reg: [1, 3, 5, 7, 9]
+
+  voting_classifier:
+    name: "Voting Ensemble"
+    enabled: true
+    voting: "soft"  # soft or hard
+    weights: null
+    estimators:
+      - logistic_regression
+      - random_forest
+      - xgboost
+
+  stacking_classifier:
+    name: "Stacking Ensemble"
+    enabled: true
+    final_estimator: "logistic_regression"
+    cv: 5
+    estimators:
+      - logistic_regression
+      - random_forest
+      - xgboost
+      - lightgbm
+
+hyperparameter_tuning:
+  method: "optuna"  # grid, random, optuna
+  n_trials: 100  # for optuna
+  n_iter: 50  # for random search
+  cv: 5
+  scoring: "roc_auc"
+  n_jobs: -1
+  verbose: 1
